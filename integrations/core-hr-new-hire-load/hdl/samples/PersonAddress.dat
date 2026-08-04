@@ -1,0 +1,6 @@
+METADATA|PersonAddress|SourceSystemOwner|SourceSystemId|PersonId(SourceSystemId)|EffectiveStartDate|EffectiveEndDate|AddressType|AddressLine1|AddressLine2|TownOrCity|Region1|Region2|Country|PostalCode|PrimaryFlag
+MERGE|PersonAddress|OIC_NEWHIRE|ADR_100501|WKR_100501|2026-08-17|4712-12-31|HOME|120 Market Street|Suite 400|San Francisco||CA|US|94105|Y
+MERGE|PersonAddress|OIC_NEWHIRE|ADR_100502|WKR_100502|2026-08-17|4712-12-31|HOME|4400 Congress Avenue||Austin||TX|US|78701|Y
+MERGE|PersonAddress|OIC_NEWHIRE|ADR_100503|WKR_100503|2026-08-24|4712-12-31|HOME|8 Finsbury Circus|Floor 3|London|||GB|EC2M 7EA|Y
+MERGE|PersonAddress|OIC_NEWHIRE|ADR_100504|WKR_100504|2026-08-24|4712-12-31|HOME|900 Howard Street||San Francisco||CA|US|94103|Y
+MERGE|PersonAddress|OIC_NEWHIRE|ADR_100505|WKR_100505|2026-08-31|4712-12-31|HOME|701 Pike Street|Unit 12|Seattle||WA|US|98101|Y

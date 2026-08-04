@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Write-side native format for the HDL .dat files.
+
+  Each business object file is emitted as a flat sequence of lines. The XSLT
+  builds the pipe-delimited payload of every line, so this schema only has to
+  know how to terminate them. Keeping the delimiter logic in one place (the
+  map) rather than splitting it between map and schema is what makes the
+  column ordering auditable against the METADATA line.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:nxsd="http://xmlns.oracle.com/pcbpel/nxsd"
+            xmlns:tns="http://xmlns.oracle.com/hcm/hdl/dat"
+            targetNamespace="http://xmlns.oracle.com/hcm/hdl/dat"
+            elementFormDefault="qualified"
+            nxsd:version="NXSD"
+            nxsd:stream="chars"
+            nxsd:encoding="UTF-8">
+
+  <xsd:element name="DatFile">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="Line" type="xsd:string" minOccurs="0"
+                     maxOccurs="unbounded"
+                     nxsd:style="terminated"
+                     nxsd:terminatedBy="${eol}"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

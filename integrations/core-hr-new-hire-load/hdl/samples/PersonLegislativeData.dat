@@ -1,0 +1,6 @@
+METADATA|PersonLegislativeData|SourceSystemOwner|SourceSystemId|PersonId(SourceSystemId)|EffectiveStartDate|EffectiveEndDate|LegislationCode|Sex|MaritalStatus
+MERGE|PersonLegislativeData|OIC_NEWHIRE|LEG_100501|WKR_100501|2026-08-17|4712-12-31|US|F|M
+MERGE|PersonLegislativeData|OIC_NEWHIRE|LEG_100502|WKR_100502|2026-08-17|4712-12-31|US|M|S
+MERGE|PersonLegislativeData|OIC_NEWHIRE|LEG_100503|WKR_100503|2026-08-24|4712-12-31|GB|F|S
+MERGE|PersonLegislativeData|OIC_NEWHIRE|LEG_100504|WKR_100504|2026-08-24|4712-12-31|US|M|M
+MERGE|PersonLegislativeData|OIC_NEWHIRE|LEG_100505|WKR_100505|2026-08-31|4712-12-31|US|F|S

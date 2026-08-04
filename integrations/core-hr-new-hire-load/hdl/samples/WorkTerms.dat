@@ -1,0 +1,6 @@
+METADATA|WorkTerms|SourceSystemOwner|SourceSystemId|PeriodOfServiceId(SourceSystemId)|PersonId(SourceSystemId)|EffectiveStartDate|EffectiveEndDate|EffectiveSequence|EffectiveLatestChange|AssignmentNumber|AssignmentName|AssignmentType|ActionCode|BusinessUnitShortCode|LegalEmployerName|PrimaryWorkTermsFlag|AssignmentStatusTypeCode
+MERGE|WorkTerms|OIC_NEWHIRE|WT_100501|POS_100501|WKR_100501|2026-08-17|4712-12-31|1|Y|ET100501|Doe, Jane|ET|HIRE|VC_US_BU|Vision Corporation US|Y|ACTIVE_PROCESS
+MERGE|WorkTerms|OIC_NEWHIRE|WT_100502|POS_100502|WKR_100502|2026-08-17|4712-12-31|1|Y|ET100502|Okafor, Marcus|ET|HIRE|VC_US_BU|Vision Corporation US|Y|ACTIVE_PROCESS
+MERGE|WorkTerms|OIC_NEWHIRE|WT_100503|POS_100503|WKR_100503|2026-08-24|4712-12-31|1|Y|ET100503|Raman, Priya|ET|HIRE|VC_UK_BU|Vision Corporation UK|Y|ACTIVE_PROCESS
+MERGE|WorkTerms|OIC_NEWHIRE|WT_100504|POS_100504|WKR_100504|2026-08-24|4712-12-31|1|Y|ET100504|Fernandez, Diego|ET|HIRE|VC_US_BU|Vision Corporation US|Y|ACTIVE_PROCESS
+MERGE|WorkTerms|OIC_NEWHIRE|WT_100505|POS_100505|WKR_100505|2026-08-31|4712-12-31|1|Y|ET100505|Bello, Amara|ET|HIRE|VC_US_BU|Vision Corporation US|Y|ACTIVE_PROCESS

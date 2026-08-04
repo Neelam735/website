@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Canonical new-hire record.
+
+  The CSV shape belongs to whichever ATS is feeding us today; the canonical
+  shape belongs to this integration. Mapping CSV -> canonical -> HDL means a
+  second source system needs one new inbound map, not a rewrite of the HDL
+  logic.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tns="http://xmlns.oracle.com/hcm/newhire/canonical"
+            targetNamespace="http://xmlns.oracle.com/hcm/newhire/canonical"
+            elementFormDefault="qualified">
+
+  <xsd:element name="NewHireBatch">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="BatchId" type="xsd:string"/>
+        <xsd:element name="SourceFileName" type="xsd:string"/>
+        <xsd:element name="NewHire" type="tns:NewHireType"
+                     minOccurs="0" maxOccurs="unbounded"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:complexType name="NewHireType">
+    <xsd:sequence>
+      <xsd:element name="SourceLineNumber" type="xsd:int"/>
+      <xsd:element name="PersonNumber" type="xsd:string"/>
+
+      <xsd:element name="Name">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="Title" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="FirstName" type="xsd:string"/>
+            <xsd:element name="MiddleNames" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="LastName" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="Demographics" minOccurs="0">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="DateOfBirth" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="Sex" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="MaritalStatus" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="CountryOfBirth" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="TownOfBirth" type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="Contact" minOccurs="0">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="EmailAddress" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="PhoneCountryCode" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="PhoneAreaCode" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="PhoneNumber" type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="Address" minOccurs="0">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="AddressLine1" type="xsd:string"/>
+            <xsd:element name="AddressLine2" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="TownOrCity" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="Region1" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="Region2" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="Country" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="PostalCode" type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="Employment">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="HireDate" type="xsd:string"/>
+            <xsd:element name="ActionCode" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="LegalEmployerName" type="xsd:string"/>
+            <xsd:element name="LegislationCode" type="xsd:string"/>
+            <xsd:element name="WorkerType" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="BusinessUnitShortCode" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="JobCode" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="GradeCode" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="DepartmentName" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="LocationCode" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="PositionCode" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="AssignmentCategory" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="NormalHours" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="Frequency" type="xsd:string" minOccurs="0"/>
+            <xsd:element name="ManagerFlag" type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+    </xsd:sequence>
+  </xsd:complexType>
+</xsd:schema>

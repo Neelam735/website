@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+
+# Built archives are reproducible from source; rebuild with `make build`
+# rather than committing a binary that can drift from the tree.
+dist/
+
+# Local HDL output from tools/generate_worker_dat.py
+build/
+*.zip

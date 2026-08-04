@@ -1,0 +1,29 @@
+{
+  "$comment": [
+    "Connection descriptor. Credentials are deliberately absent: OIC does not",
+    "export secrets, and the import wizard prompts for them. Anything that",
+    "looks like a secret here is a placeholder to be replaced per environment."
+  ],
+  "code": "FTP_NEWHIRE_INBOUND",
+  "name": "New Hire SFTP",
+  "description": "SFTP landing zone for ATS new-hire extracts, run summaries and rejects.",
+  "adapter": "ftp",
+  "role": "INVOKE",
+  "properties": {
+    "hostAddress": "${FTP_HOST}",
+    "port": "22",
+    "sftp": "yes",
+    "hostKeyFingerprint": "${FTP_HOST_KEY_FINGERPRINT}",
+    "$comment_hostkey": "Pin the fingerprint. Without it the first connection to an impostor host succeeds silently.",
+    "sslCertificate": "",
+    "pgpEncryption": "no",
+    "$comment_pgp": "Set to yes and register the key when the extract carries national identifiers; see docs/runbook.md."
+  },
+  "security": {
+    "policy": "FTP Server Access Policy",
+    "authenticationType": "PUBLIC_KEY",
+    "username": "${FTP_USER}",
+    "privateKeyAlias": "${FTP_KEY_ALIAS}",
+    "$comment": "Supplied at import time, never in the archive."
+  }
+}

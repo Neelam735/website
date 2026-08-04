@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Trigger contract for the scheduled orchestration. The schedule parameters
+  are the integration's only external inputs; declaring them here is what lets
+  them be overridden per environment from the OIC console without a rebuild.
+-->
+<wsdl:definitions
+    name="NewHireLoadSchedule"
+    targetNamespace="http://xmlns.oracle.com/hcm/newhire/schedule"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="http://xmlns.oracle.com/hcm/newhire/schedule">
+
+  <wsdl:types>
+    <xsd:schema targetNamespace="http://xmlns.oracle.com/hcm/newhire/schedule"
+                elementFormDefault="qualified">
+      <xsd:element name="ScheduleRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="inboundDirectory"    type="xsd:string" minOccurs="0"/>
+            <xsd:element name="archiveDirectory"    type="xsd:string" minOccurs="0"/>
+            <xsd:element name="rejectDirectory"     type="xsd:string" minOccurs="0"/>
+            <xsd:element name="filePattern"         type="xsd:string" minOccurs="0"/>
+            <xsd:element name="sourceSystemOwner"   type="xsd:string" minOccurs="0"/>
+            <xsd:element name="environmentName"     type="xsd:string" minOccurs="0"/>
+            <xsd:element name="notifyTo"            type="xsd:string" minOccurs="0"/>
+            <xsd:element name="batchSize"           type="xsd:int"    minOccurs="0"/>
+            <xsd:element name="pollIntervalSeconds" type="xsd:int"    minOccurs="0"/>
+            <xsd:element name="maxPollAttempts"     type="xsd:int"    minOccurs="0"/>
+            <!-- IMPORT_AND_LOAD for a real run, IMPORT_ONLY to stage the data
+                 set in HCM and inspect it before committing. Use IMPORT_ONLY
+                 for the first run in any new environment. -->
+            <xsd:element name="importMode"          type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="ScheduleRequestMessage">
+    <wsdl:part name="request" element="tns:ScheduleRequest"/>
+  </wsdl:message>
+
+  <wsdl:portType name="ScheduleTriggerPortType">
+    <wsdl:operation name="run">
+      <wsdl:input message="tns:ScheduleRequestMessage"/>
+    </wsdl:operation>
+  </wsdl:portType>
+</wsdl:definitions>

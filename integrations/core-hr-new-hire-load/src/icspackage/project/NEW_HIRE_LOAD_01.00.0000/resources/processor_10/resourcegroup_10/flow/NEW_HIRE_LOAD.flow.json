@@ -1,0 +1,355 @@
+{
+  "$comment": [
+    "Orchestration flow for NEW_HIRE_LOAD. Every action, its configuration,",
+    "and its wiring, in the order the flow executes them. This is the",
+    "authoritative description of the integration: the OIC designer canvas",
+    "should match it action for action, and a reviewer should be able to read",
+    "this file instead of clicking through the canvas."
+  ],
+
+  "integration": {
+    "code": "NEW_HIRE_LOAD",
+    "version": "01.00.0000",
+    "name": "Core HR - New Hire Load (HDL)",
+    "description": "Reads an ATS new-hire extract from SFTP, builds HCM Data Loader Worker business object files, uploads them to UCM, runs the HDL import, polls to completion and reports the outcome.",
+    "style": "SCHEDULED_ORCHESTRATION",
+    "tracking": [
+      { "field": "batchId", "primary": true },
+      { "field": "sourceFileName", "primary": false },
+      { "field": "dataSetName", "primary": false }
+    ]
+  },
+
+  "$comment_params": [
+    "Integration properties. Changing an environment means editing these in",
+    "the OIC console (Integration -> Actions -> Update Property Values), not",
+    "rebuilding the .iar."
+  ],
+  "scheduleParameters": [
+    { "name": "inboundDirectory",  "default": "/hcm/newhire/in",      "description": "SFTP directory polled for extracts." },
+    { "name": "archiveDirectory",  "default": "/hcm/newhire/archive", "description": "Where a processed extract is moved." },
+    { "name": "rejectDirectory",   "default": "/hcm/newhire/reject",  "description": "Rejected rows and run summaries." },
+    { "name": "filePattern",       "default": "NEWHIRE_*.csv",        "description": "Extracts to pick up." },
+    { "name": "sourceSystemOwner", "default": "OIC_NEWHIRE",          "description": "Must exist in HRC_SOURCE_SYSTEM_OWNER." },
+    { "name": "environmentName",   "default": "DEV",                  "description": "Prefixes the notification subject." },
+    { "name": "notifyTo",          "default": "hcm-integrations@example.com", "description": "Completion notification recipients." },
+    { "name": "batchSize",         "default": "500",                  "description": "Rows read per Stage File segment." },
+    { "name": "pollIntervalSeconds", "default": "60",                 "description": "Delay between HDL status checks." },
+    { "name": "maxPollAttempts",   "default": "60",                   "description": "Ceiling on status checks; 60 x 60s = 1 hour." },
+    { "name": "importMode",        "default": "IMPORT_AND_LOAD",      "description": "IMPORT_AND_LOAD or IMPORT_ONLY for a dry run." }
+  ],
+
+  "connections": [
+    { "ref": "FTP_NEWHIRE_INBOUND", "role": "invoke" },
+    { "ref": "HCM_CORE_HR",         "role": "invoke" },
+    { "ref": "SMTP_NOTIFY",         "role": "invoke" }
+  ],
+
+  "flow": [
+    {
+      "id": "10_schedule",
+      "type": "TRIGGER",
+      "action": "Schedule",
+      "$comment": "Daily at 02:00 in the instance timezone. The window is deliberately after the ATS nightly extract completes.",
+      "config": { "frequency": "DAILY", "time": "02:00" }
+    },
+    {
+      "id": "20_assign_run_context",
+      "type": "ASSIGN",
+      "$comment": "batchId is stamped on every downstream artifact so a run can be traced from the email back to the .dat files.",
+      "assignments": {
+        "batchId": "concat('NH-', fn:format-dateTime(fn:current-dateTime(), '[Y0001][M01][D01]-[H01][m01][s01]'))",
+        "runStartTime": "fn:current-dateTime()",
+        "sourceRows": "0",
+        "acceptedRows": "0",
+        "rejectedRows": "0",
+        "timedOut": "false"
+      }
+    },
+    {
+      "id": "30_list_files",
+      "type": "INVOKE",
+      "connection": "FTP_NEWHIRE_INBOUND",
+      "operation": "List Files",
+      "config": {
+        "directory": "$inboundDirectory",
+        "fileNamePattern": "$filePattern"
+      }
+    },
+    {
+      "id": "40_no_files_check",
+      "type": "SWITCH",
+      "$comment": "An empty inbound directory is a normal night, not an error. Exit quietly rather than emailing about nothing.",
+      "branches": [
+        { "name": "noFiles", "condition": "count($ListFilesResponse/FileList/File) = 0", "goto": "END" },
+        { "name": "otherwise", "goto": "50_for_each_file" }
+      ]
+    },
+    {
+      "id": "50_for_each_file",
+      "type": "FOR_EACH",
+      "over": "$ListFilesResponse/FileList/File",
+      "as": "currentFile",
+      "$comment": "Sequential, not parallel. Two concurrent HDL imports of the same business object contend on the same records in HCM.",
+      "parallel": false,
+      "body": [
+        {
+          "id": "51_read_segments",
+          "type": "STAGE_FILE",
+          "operation": "Read File in Segments",
+          "$comment": "Segmented so a 50k-row extract does not have to fit in memory. Each segment is transformed and appended.",
+          "config": {
+            "fileReference": "$currentFile/fileReference",
+            "schema": "../schemas/newhire-csv.nxsd",
+            "schemaElement": "NewHireExtract",
+            "segmentSize": "$batchSize"
+          },
+          "body": [
+            {
+              "id": "52_map_to_canonical",
+              "type": "MAP",
+              "map": "../maps/map_csv_to_canonical.xsl",
+              "params": {
+                "batchId": "$batchId",
+                "sourceFileName": "$currentFile/fileName",
+                "lineOffset": "$segmentStartLine"
+              }
+            },
+            {
+              "id": "53_accumulate",
+              "type": "ASSIGN",
+              "$comment": "Counts drive the summary; the canonical batch accumulates across segments.",
+              "assignments": {
+                "canonicalBatch": "append($canonicalBatch, $NewHireBatch/NewHire)",
+                "sourceRows": "$sourceRows + count($NewHireBatch/NewHire)"
+              }
+            }
+          ]
+        },
+        {
+          "id": "60_write_dat_files",
+          "type": "FOR_EACH",
+          "$comment": "One .dat per business object, written in dependency order. HDL resolves a child row's parent by SourceSystemId, so Worker must precede PersonName, and WorkRelationship must precede WorkTerms and Assignment.",
+          "over": "['Worker','PersonName','PersonEmail','PersonPhone','PersonLegislativeData','PersonAddress','WorkRelationship','WorkTerms','Assignment']",
+          "as": "businessObject",
+          "parallel": false,
+          "body": [
+            {
+              "id": "61_map_to_hdl",
+              "type": "MAP",
+              "map": "../maps/map_canonical_to_hdl.xsl",
+              "params": {
+                "object": "$businessObject",
+                "sourceSystemOwner": "$sourceSystemOwner"
+              }
+            },
+            {
+              "id": "62_skip_empty",
+              "type": "SWITCH",
+              "$comment": "A file with only a METADATA line is valid but clutters the HDL import report.",
+              "branches": [
+                { "name": "empty", "condition": "count($DatFile/Line) = 0", "goto": "CONTINUE" },
+                { "name": "otherwise", "goto": "63_write_dat" }
+              ]
+            },
+            {
+              "id": "63_write_dat",
+              "type": "STAGE_FILE",
+              "operation": "Write File",
+              "config": {
+                "fileName": "concat($businessObject, '.dat')",
+                "directory": "concat('/hdl/', $batchId)",
+                "schema": "../schemas/hdl-dat-line.nxsd",
+                "schemaElement": "DatFile",
+                "appendToFile": false
+              }
+            }
+          ]
+        },
+        {
+          "id": "70_zip",
+          "type": "STAGE_FILE",
+          "operation": "Zip Files",
+          "$comment": "HDL requires a flat archive: .dat files at the root, no directory entries. The archive name becomes the HDL data set name.",
+          "config": {
+            "sourceDirectory": "concat('/hdl/', $batchId)",
+            "fileName": "Worker.zip",
+            "includePattern": "*.dat"
+          }
+        },
+        {
+          "id": "80_upload_and_import",
+          "type": "INVOKE",
+          "connection": "HCM_CORE_HR",
+          "operation": "Import Bulk Data",
+          "$comment": "Uploads Worker.zip to UCM under the hcm/dataloader/import account and submits the HDL import in one call. Returns the UCM content id and the HDL process id.",
+          "config": {
+            "fileReference": "$ZipFileReference",
+            "contentType": "hcm/dataloader/import",
+            "fileName": "Worker.zip",
+            "importMode": "$importMode",
+            "parameters": {
+              "DeleteSourceFile": "N",
+              "FileEncryption": "NONE"
+            }
+          },
+          "assignTo": {
+            "contentId": "$ImportResponse/ContentId",
+            "processId": "$ImportResponse/ProcessId",
+            "dataSetName": "$ImportResponse/DataSetName"
+          }
+        },
+        {
+          "id": "90_poll_status",
+          "type": "WHILE",
+          "$comment": "HDL is asynchronous. Poll to a terminal state so the notification reports the load outcome, not just that a file was accepted.",
+          "condition": "$pollAttempt < $maxPollAttempts and $importStatus != 'COMPLETED' and $importStatus != 'ERROR' and $importStatus != 'FAILED'",
+          "body": [
+            { "id": "91_wait", "type": "WAIT", "config": { "seconds": "$pollIntervalSeconds" } },
+            {
+              "id": "92_get_status",
+              "type": "INVOKE",
+              "connection": "HCM_CORE_HR",
+              "operation": "Get Data Set Status",
+              "config": { "processId": "$processId" },
+              "assignTo": { "importStatus": "$StatusResponse/ImportStatus" }
+            },
+            {
+              "id": "93_increment",
+              "type": "ASSIGN",
+              "assignments": { "pollAttempt": "$pollAttempt + 1" }
+            }
+          ]
+        },
+        {
+          "id": "100_flag_timeout",
+          "type": "SWITCH",
+          "$comment": "Distinguish 'we stopped waiting' from 'HDL failed'. Resubmitting a load that is still running duplicates hires.",
+          "branches": [
+            {
+              "name": "stillRunning",
+              "condition": "$pollAttempt >= $maxPollAttempts and $importStatus != 'COMPLETED'",
+              "actions": [
+                { "id": "101_set_timeout", "type": "ASSIGN", "assignments": { "timedOut": "true" } }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "110_fetch_errors",
+          "type": "SWITCH",
+          "branches": [
+            {
+              "name": "hasErrors",
+              "condition": "$StatusResponse/ErrorRowCount > 0",
+              "actions": [
+                {
+                  "id": "111_get_error_report",
+                  "type": "INVOKE",
+                  "connection": "HCM_CORE_HR",
+                  "operation": "Get Import Error Report",
+                  "config": { "processId": "$processId" }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "120_build_summary",
+          "type": "MAP",
+          "map": "../maps/map_status_to_summary.xsl",
+          "params": {
+            "batchId": "$batchId",
+            "sourceFileName": "$currentFile/fileName",
+            "runStartTime": "$runStartTime",
+            "runEndTime": "fn:current-dateTime()",
+            "contentId": "$contentId",
+            "sourceRows": "$sourceRows",
+            "accepted": "$acceptedRows",
+            "rejectedInFlight": "$rejectedRows",
+            "timedOut": "$timedOut"
+          }
+        },
+        {
+          "id": "130_write_summary",
+          "type": "INVOKE",
+          "connection": "FTP_NEWHIRE_INBOUND",
+          "operation": "Write File",
+          "$comment": "The durable audit record. The email can be missed or filtered; this cannot.",
+          "config": {
+            "directory": "$rejectDirectory",
+            "fileName": "concat($batchId, '_summary.xml')"
+          }
+        },
+        {
+          "id": "140_archive_source",
+          "type": "INVOKE",
+          "connection": "FTP_NEWHIRE_INBOUND",
+          "operation": "Move File",
+          "$comment": "Moved only after the summary is durable. Losing the extract while the run is unrecorded would leave nothing to replay from.",
+          "config": {
+            "sourceDirectory": "$inboundDirectory",
+            "sourceFileName": "$currentFile/fileName",
+            "targetDirectory": "$archiveDirectory",
+            "targetFileName": "concat($batchId, '_', $currentFile/fileName)"
+          }
+        },
+        {
+          "id": "150_notify",
+          "type": "INVOKE",
+          "connection": "SMTP_NOTIFY",
+          "operation": "Send Email",
+          "config": {
+            "to": "$notifyTo",
+            "subject": "$Notification/Subject",
+            "body": "$Notification/Body"
+          },
+          "mappedFrom": {
+            "map": "../maps/map_summary_to_notification.xsl",
+            "params": { "environmentName": "$environmentName" }
+          }
+        }
+      ]
+    }
+  ],
+
+  "faultHandlers": [
+    {
+      "scope": "50_for_each_file",
+      "$comment": "A failure on one extract must not abandon the others. Record it, move the file out of the way so the next run does not retry it forever, and continue.",
+      "on": ["APIInvocationError", "RuntimeFault", "ConnectivityError"],
+      "actions": [
+        {
+          "id": "F1_write_failure_summary",
+          "type": "INVOKE",
+          "connection": "FTP_NEWHIRE_INBOUND",
+          "operation": "Write File",
+          "config": {
+            "directory": "$rejectDirectory",
+            "fileName": "concat($batchId, '_FAILED.xml')"
+          }
+        },
+        {
+          "id": "F2_move_to_reject",
+          "type": "INVOKE",
+          "connection": "FTP_NEWHIRE_INBOUND",
+          "operation": "Move File",
+          "config": {
+            "sourceDirectory": "$inboundDirectory",
+            "sourceFileName": "$currentFile/fileName",
+            "targetDirectory": "$rejectDirectory",
+            "targetFileName": "concat($batchId, '_', $currentFile/fileName)"
+          }
+        },
+        {
+          "id": "F3_notify_failure",
+          "type": "INVOKE",
+          "connection": "SMTP_NOTIFY",
+          "operation": "Send Email",
+          "config": { "to": "$notifyTo" }
+        },
+        { "id": "F4_continue", "type": "RETHROW", "scope": "SUPPRESS_AND_CONTINUE" }
+      ]
+    }
+  ]
+}

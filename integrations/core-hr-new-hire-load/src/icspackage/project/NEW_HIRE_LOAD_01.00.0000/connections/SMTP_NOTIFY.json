@@ -1,0 +1,14 @@
+{
+  "code": "SMTP_NOTIFY",
+  "name": "New Hire Load Notifications",
+  "description": "Completion and failure notifications for the new-hire load.",
+  "adapter": "oraclecloudnotification",
+  "role": "INVOKE",
+  "properties": {
+    "$comment": [
+      "The built-in OIC notification service. Recipients are set through the",
+      "notifyTo integration property rather than pinned here, so a rota change",
+      "does not need a redeploy."
+    ]
+  }
+}

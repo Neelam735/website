@@ -1,0 +1,6 @@
+METADATA|WorkRelationship|SourceSystemOwner|SourceSystemId|PersonId(SourceSystemId)|LegalEmployerName|DateStart|WorkerType|PrimaryFlag|LegalEmployerSeniorityDate
+MERGE|WorkRelationship|OIC_NEWHIRE|POS_100501|WKR_100501|Vision Corporation US|2026-08-17|E|Y|2026-08-17
+MERGE|WorkRelationship|OIC_NEWHIRE|POS_100502|WKR_100502|Vision Corporation US|2026-08-17|E|Y|2026-08-17
+MERGE|WorkRelationship|OIC_NEWHIRE|POS_100503|WKR_100503|Vision Corporation UK|2026-08-24|E|Y|2026-08-24
+MERGE|WorkRelationship|OIC_NEWHIRE|POS_100504|WKR_100504|Vision Corporation US|2026-08-24|E|Y|2026-08-24
+MERGE|WorkRelationship|OIC_NEWHIRE|POS_100505|WKR_100505|Vision Corporation US|2026-08-31|E|Y|2026-08-31

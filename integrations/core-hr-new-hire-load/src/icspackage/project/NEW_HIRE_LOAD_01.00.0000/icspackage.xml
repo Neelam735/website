@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Project descriptor for the integration archive: identity, the connections
+  the import wizard must resolve, and the resource inventory.
+-->
+<icspackage xmlns="http://xmlns.oracle.com/ics/package"
+            version="1.0">
+
+  <project>
+    <identifier>NEW_HIRE_LOAD</identifier>
+    <version>01.00.0000</version>
+    <name>Core HR - New Hire Load (HDL)</name>
+    <description>Reads an ATS new-hire extract from SFTP, builds HCM Data Loader Worker business object files, uploads them to UCM, runs the HDL import, polls to completion and reports the outcome.</description>
+    <style>SCHEDULED_ORCHESTRATION</style>
+    <status>CONFIGURED</status>
+  </project>
+
+  <!-- Resolved against the target instance during import. Credentials are
+       never carried in the archive; the wizard prompts for them. -->
+  <connections>
+    <connection>
+      <identifier>FTP_NEWHIRE_INBOUND</identifier>
+      <adapter>ftp</adapter>
+      <role>INVOKE</role>
+      <descriptor>connections/FTP_NEWHIRE_INBOUND.json</descriptor>
+    </connection>
+    <connection>
+      <identifier>HCM_CORE_HR</identifier>
+      <adapter>oraclehcmcloud</adapter>
+      <role>INVOKE</role>
+      <descriptor>connections/HCM_CORE_HR.json</descriptor>
+    </connection>
+    <connection>
+      <identifier>SMTP_NOTIFY</identifier>
+      <adapter>oraclecloudnotification</adapter>
+      <role>INVOKE</role>
+      <descriptor>connections/SMTP_NOTIFY.json</descriptor>
+    </connection>
+  </connections>
+
+  <processors>
+    <processor id="processor_10">
+      <resourcegroup id="resourcegroup_10">
+        <resource type="FLOW"   path="resources/processor_10/resourcegroup_10/flow/NEW_HIRE_LOAD.flow.json"/>
+        <resource type="WSDL"   path="resources/processor_10/resourcegroup_10/wsdls/schedule-trigger.wsdl"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/newhire-csv.nxsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/hdl-dat-line.nxsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/newhire-canonical.xsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/load-summary.xsd"/>
+        <resource type="MAP"    path="resources/processor_10/resourcegroup_10/maps/map_csv_to_canonical.xsl"/>
+        <resource type="MAP"    path="resources/processor_10/resourcegroup_10/maps/map_canonical_to_hdl.xsl"/>
+        <resource type="MAP"    path="resources/processor_10/resourcegroup_10/maps/map_status_to_summary.xsl"/>
+        <resource type="MAP"    path="resources/processor_10/resourcegroup_10/maps/map_summary_to_notification.xsl"/>
+      </resourcegroup>
+    </processor>
+  </processors>
+</icspackage>

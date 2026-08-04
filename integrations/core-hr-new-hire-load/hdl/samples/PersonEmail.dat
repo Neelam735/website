@@ -1,0 +1,6 @@
+METADATA|PersonEmail|SourceSystemOwner|SourceSystemId|PersonId(SourceSystemId)|DateFrom|DateTo|EmailType|EmailAddress|PrimaryFlag
+MERGE|PersonEmail|OIC_NEWHIRE|EML_100501|WKR_100501|2026-08-17|4712-12-31|W1|jane.doe@example.com|Y
+MERGE|PersonEmail|OIC_NEWHIRE|EML_100502|WKR_100502|2026-08-17|4712-12-31|W1|marcus.okafor@example.com|Y
+MERGE|PersonEmail|OIC_NEWHIRE|EML_100503|WKR_100503|2026-08-24|4712-12-31|W1|priya.raman@example.com|Y
+MERGE|PersonEmail|OIC_NEWHIRE|EML_100504|WKR_100504|2026-08-24|4712-12-31|W1|diego.fernandez@example.com|Y
+MERGE|PersonEmail|OIC_NEWHIRE|EML_100505|WKR_100505|2026-08-31|4712-12-31|W1|amara.bello@example.com|Y

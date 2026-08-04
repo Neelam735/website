@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Run summary. Written to the FTP audit directory and used as the body of the
+  completion notification, so operations can answer "did last night's hires
+  land?" without opening the HCM import monitor.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tns="http://xmlns.oracle.com/hcm/newhire/summary"
+            targetNamespace="http://xmlns.oracle.com/hcm/newhire/summary"
+            elementFormDefault="qualified">
+
+  <xsd:element name="LoadSummary">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="BatchId" type="xsd:string"/>
+        <xsd:element name="SourceFileName" type="xsd:string"/>
+        <xsd:element name="RunStartTime" type="xsd:string"/>
+        <xsd:element name="RunEndTime" type="xsd:string" minOccurs="0"/>
+
+        <!-- HDL identifiers, needed to trace the load in HCM. -->
+        <xsd:element name="ContentId" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="ProcessId" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="DataSetName" type="xsd:string" minOccurs="0"/>
+
+        <!-- NOT_STARTED | IN_PROGRESS | COMPLETED | COMPLETED_WITH_ERRORS
+             | FAILED | TIMED_OUT -->
+        <xsd:element name="Status" type="xsd:string"/>
+        <xsd:element name="StatusDetail" type="xsd:string" minOccurs="0"/>
+
+        <xsd:element name="Counts">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="SourceRows" type="xsd:int"/>
+              <xsd:element name="Accepted" type="xsd:int"/>
+              <xsd:element name="RejectedInFlight" type="xsd:int"/>
+              <xsd:element name="LoadedByHdl" type="xsd:int" minOccurs="0"/>
+              <xsd:element name="FailedInHdl" type="xsd:int" minOccurs="0"/>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+
+        <xsd:element name="Reject" minOccurs="0" maxOccurs="unbounded">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="SourceLineNumber" type="xsd:int" minOccurs="0"/>
+              <xsd:element name="PersonNumber" type="xsd:string" minOccurs="0"/>
+              <!-- IN_FLIGHT (this integration) | HDL (the load itself) -->
+              <xsd:element name="Stage" type="xsd:string"/>
+              <xsd:element name="Message" type="xsd:string"/>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>
