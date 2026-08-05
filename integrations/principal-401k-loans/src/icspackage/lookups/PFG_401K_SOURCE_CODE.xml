@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Payroll name -> Principal source code.
+
+  Principal uses the source code to attribute a repayment to the payroll it
+  came from, which is what lets them tell a semi-monthly deduction from an
+  off-cycle correction when both land in the same file.
+
+  Unmapped payrolls fall back to the default row rather than failing the file:
+  a wrong source code is a reporting nuisance at Principal's end, not a
+  misposted repayment, and holding the whole remittance for it would cost
+  participants interest.
+-->
+<lookup xmlns="http://xmlns.oracle.com/ics/lookup" name="PFG_401K_SOURCE_CODE">
+  <description>Maps the HCM payroll name to Principal's two-character source code.</description>
+  <adapters>
+    <adapter name="ORACLE_HCM"/>
+    <adapter name="PRINCIPAL"/>
+  </adapters>
+  <rows>
+    <row>
+      <column adapter="ORACLE_HCM">US Semi-Monthly Payroll</column>
+      <column adapter="PRINCIPAL">SM</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">US Biweekly Payroll</column>
+      <column adapter="PRINCIPAL">BW</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">US Monthly Payroll</column>
+      <column adapter="PRINCIPAL">MO</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">US Off-Cycle Payroll</column>
+      <column adapter="PRINCIPAL">OC</column>
+    </row>
+    <!-- Fallback for a payroll nobody has mapped yet. -->
+    <row>
+      <column adapter="ORACLE_HCM">DEFAULT</column>
+      <column adapter="PRINCIPAL">RG</column>
+    </row>
+  </rows>
+</lookup>

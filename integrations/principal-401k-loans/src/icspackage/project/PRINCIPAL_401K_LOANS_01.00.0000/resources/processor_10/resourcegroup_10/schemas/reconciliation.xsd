@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The independent recount of the formatted file.
+
+  Deliberately tiny, and deliberately not part of the canonical model. These
+  three numbers exist to be compared against the canonical batch's Totals, and
+  the whole value of the comparison rests on them having been derived from a
+  different thing: the Totals come from the loan records, these come from the
+  200-character text that is about to be delivered.
+
+  Anything that made this easier to compute by consulting the canonical batch
+  would destroy the only check in the integration that can catch a formatting
+  fault.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tns="http://xmlns.oracle.com/hcm/principal401k/reconciliation"
+            targetNamespace="http://xmlns.oracle.com/hcm/principal401k/reconciliation"
+            elementFormDefault="qualified">
+
+  <xsd:element name="FileCheck">
+    <xsd:complexType>
+      <xsd:sequence>
+        <!-- Records beginning 'D', counted in the file itself. -->
+        <xsd:element name="ActualDetailCount" type="xsd:int"/>
+        <!-- Parsed back out of columns 79-90 and 103-114 respectively,
+             including the trailing sign. -->
+        <xsd:element name="ActualRepaymentCents" type="xsd:long"/>
+        <xsd:element name="ActualOutstandingCents" type="xsd:long"/>
+        <!-- Every record's length, distinct values. A file where this is
+             anything other than a single 200 has a record that overran or was
+             cut, which no amount of total-matching would reveal. -->
+        <xsd:element name="RecordLengths" type="xsd:string" minOccurs="0"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

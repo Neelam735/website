@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Integration project model: identity, the connections it binds to, the
+  processors that hold its resources, and the activity sequence.
+
+  In OIC's model an activity refers to a processor, a processor refers to
+  resources (JCA, WSDL, XSD, XSL), and the orchestration section carries the
+  sequence. The activity list below mirrors
+  flow/PRINCIPAL_401K_LOANS.flow.json step for step; the flow file carries the
+  per-action configuration and the reasoning, and is the one to read first.
+-->
+<project xmlns="http://xmlns.oracle.com/ics/project"
+         projectType="INTEGRATION">
+
+  <code>PRINCIPAL_401K_LOANS</code>
+  <version>01.00.0000</version>
+  <name>Principal 401(k) Loans - Outbound File</name>
+  <description>Submits the Principal 401(k) loans HCM Extract, polls the ESS request to completion, retrieves the extract XML from UCM, formats it into the Principal fixed-width loan repayment file, optionally PGP-encrypts it, delivers it to Principal's SFTP with a temp-then-rename handshake, archives a copy to UCM and reports the outcome.</description>
+  <pattern>SCHEDULED_ORCHESTRATION</pattern>
+  <status>CONFIGURED</status>
+
+  <!-- Resolved against the target instance during import; see
+       icspackage/appinstances/ for the descriptors. -->
+  <appinstanceReferences>
+    <appinstanceReference code="HCM_PRINCIPAL_401K" adapterType="oraclehcmcloud" role="INVOKE"/>
+    <appinstanceReference code="SFTP_PRINCIPAL_401K" adapterType="ftp" role="INVOKE"/>
+    <appinstanceReference code="SMTP_NOTIFY" adapterType="oraclecloudnotification" role="INVOKE"/>
+  </appinstanceReferences>
+
+  <!-- Environment-specific values live here, not in the flow. Maintained in
+       the OIC console under Lookups. -->
+  <lookupReferences>
+    <lookupReference code="PFG_401K_LOAN_TYPE"/>
+    <lookupReference code="PFG_401K_LOAN_STATUS"/>
+    <lookupReference code="PFG_401K_CONTRACT"/>
+    <lookupReference code="PFG_401K_SOURCE_CODE"/>
+  </lookupReferences>
+
+  <processors>
+    <processor id="processor_10">
+      <resourcegroup id="resourcegroup_10">
+        <resource type="WSDL"   path="resources/processor_10/resourcegroup_10/wsdls/schedule-trigger.wsdl"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/loan-extract.xsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/loan-canonical.xsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/principal-loan-file.nxsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/reconciliation.xsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/delivery-summary.xsd"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_extract_to_canonical.xsl"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_canonical_to_principal.xsl"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_file_to_reconciliation.xsl"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_status_to_summary.xsl"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_summary_to_notification.xsl"/>
+        <resource type="FLOW"   path="resources/processor_10/resourcegroup_10/flow/PRINCIPAL_401K_LOANS.flow.json"/>
+      </resourcegroup>
+    </processor>
+  </processors>
+
+  <orchestration>
+    <activities>
+      <activity id="10_schedule" type="TRIGGER" subtype="SCHEDULE"/>
+      <activity id="20_assign_run_context" type="ASSIGN"/>
+      <activity id="30_submit_extract" type="SWITCH">
+        <activities>
+          <activity id="31_submit_ess_job" type="INVOKE" appinstance="HCM_PRINCIPAL_401K" operation="submitESSJobRequest"/>
+          <activity id="32_reprocess_existing" type="ASSIGN"/>
+        </activities>
+      </activity>
+      <activity id="40_poll_ess_status" type="WHILE">
+        <activities>
+          <activity id="41_wait" type="WAIT"/>
+          <activity id="42_get_ess_status" type="INVOKE" appinstance="HCM_PRINCIPAL_401K" operation="getESSJobStatus"/>
+          <activity id="43_backoff" type="ASSIGN"/>
+        </activities>
+      </activity>
+      <!-- Three distinct throws, not one. A failed extract can be rerun, a
+           timed-out one may still be running, and a warned one would deliver
+           a file short by exactly the rows that errored. -->
+      <activity id="50_extract_outcome" type="SWITCH">
+        <activities>
+          <activity id="51_throw_extract_failed" type="THROW" fault="ExtractFailedError"/>
+          <activity id="52_throw_extract_warning" type="THROW" fault="ExtractFailedError"/>
+          <activity id="53_throw_timeout" type="THROW" fault="ExtractFailedError"/>
+        </activities>
+      </activity>
+      <activity id="60_search_ucm" type="INVOKE" appinstance="HCM_PRINCIPAL_401K" operation="searchDocuments"/>
+      <activity id="65_no_output_check" type="SWITCH">
+        <activities>
+          <activity id="66_throw_missing_output" type="THROW" fault="ExtractFailedError"/>
+        </activities>
+      </activity>
+      <activity id="70_get_ucm_file" type="INVOKE" appinstance="HCM_PRINCIPAL_401K" operation="getFile"/>
+      <activity id="80_decode_and_stage" type="STAGE_FILE" operation="WriteFile"/>
+      <activity id="90_read_extract" type="STAGE_FILE" operation="ReadEntireFile"/>
+      <activity id="100_map_to_canonical" type="MAP" processor="processor_10"/>
+      <activity id="110_zero_record_check" type="SWITCH">
+        <activities>
+          <activity id="111_set_skipped" type="ASSIGN"/>
+        </activities>
+      </activity>
+      <activity id="120_map_to_principal" type="MAP" processor="processor_10"/>
+      <activity id="130_write_flat_file" type="STAGE_FILE" operation="WriteFile"/>
+      <activity id="135_read_back_file" type="STAGE_FILE" operation="ReadEntireFile"/>
+      <activity id="136_recount_file" type="MAP" processor="processor_10"/>
+      <activity id="140_reconcile" type="SWITCH">
+        <activities>
+          <activity id="141_raise_reconciliation_fault" type="THROW"/>
+        </activities>
+      </activity>
+      <activity id="150_encrypt" type="SWITCH">
+        <activities>
+          <activity id="151_pgp_encrypt" type="STAGE_FILE" operation="EncryptFile"/>
+          <activity id="152_deliver_cleartext" type="ASSIGN"/>
+        </activities>
+      </activity>
+      <activity id="160_duplicate_check" type="INVOKE" appinstance="SFTP_PRINCIPAL_401K" operation="ListFiles"/>
+      <activity id="170_already_delivered" type="SWITCH">
+        <activities>
+          <activity id="171_set_already_delivered" type="ASSIGN"/>
+        </activities>
+      </activity>
+      <activity id="180_put_temp" type="INVOKE" appinstance="SFTP_PRINCIPAL_401K" operation="WriteFile"/>
+      <activity id="190_rename_to_final" type="INVOKE" appinstance="SFTP_PRINCIPAL_401K" operation="MoveFile"/>
+      <activity id="200_write_trigger_file" type="SWITCH">
+        <activities>
+          <activity id="201_put_trigger" type="INVOKE" appinstance="SFTP_PRINCIPAL_401K" operation="WriteFile"/>
+        </activities>
+      </activity>
+      <activity id="210_archive_to_ucm" type="INVOKE" appinstance="HCM_PRINCIPAL_401K" operation="uploadFileToUCM"/>
+      <activity id="220_build_summary" type="MAP" processor="processor_10"/>
+      <activity id="230_write_summary" type="INVOKE" appinstance="SFTP_PRINCIPAL_401K" operation="WriteFile"/>
+      <activity id="240_notify" type="INVOKE" appinstance="SMTP_NOTIFY" operation="SendEmail"/>
+    </activities>
+
+    <!-- Global handler. Business faults (reconciliation, zero records under a
+         send-empty policy, missing contract mapping) are separated from
+         technical faults (connectivity, API, runtime) because the two need
+         different people and different recovery. -->
+    <faultHandlers>
+      <faultHandler scope="GLOBAL">
+        <faults>
+          <fault name="ReconciliationError" category="BUSINESS"/>
+          <fault name="MappingError" category="BUSINESS"/>
+          <fault name="ExtractFailedError" category="BUSINESS"/>
+          <fault name="APIInvocationError" category="TECHNICAL"/>
+          <fault name="RuntimeFault" category="TECHNICAL"/>
+          <fault name="ConnectivityError" category="TECHNICAL"/>
+        </faults>
+        <activities>
+          <activity id="F1_classify_fault" type="ASSIGN"/>
+          <activity id="F2_cleanup_partial_delivery" type="SWITCH">
+            <activities>
+              <activity id="F3_delete_temp_file" type="INVOKE" appinstance="SFTP_PRINCIPAL_401K" operation="DeleteFile"/>
+            </activities>
+          </activity>
+          <activity id="F4_write_failure_summary" type="INVOKE" appinstance="SFTP_PRINCIPAL_401K" operation="WriteFile"/>
+          <activity id="F5_notify_failure" type="INVOKE" appinstance="SMTP_NOTIFY" operation="SendEmail"/>
+          <activity id="F6_rethrow" type="RETHROW" scope="FAIL_INSTANCE"/>
+        </activities>
+      </faultHandler>
+    </faultHandlers>
+  </orchestration>
+
+  <tracking>
+    <trackingField name="runId" primary="true"/>
+    <trackingField name="requestId" primary="false"/>
+    <trackingField name="targetFileName" primary="false"/>
+  </tracking>
+</project>

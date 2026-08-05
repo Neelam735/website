@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Canonical loan batch: the shape this integration owns, sitting between the
+  extract's shape and Principal's.
+
+  Two things happen on the way in that make this worth having as its own
+  schema rather than mapping the extract straight to the file:
+
+  1. The hierarchy is flattened. The extract nests loans under employees under
+     legal employers; the file is a flat list of loans. Flattening once, here,
+     means the formatting map never has to walk a tree.
+
+  2. Amounts become integer cents, and dates become CCYYMMDD. Every value in a
+     Loan node below is already in the representation the file needs, so the
+     formatting map only pads and concatenates. Arithmetic on money in XSLT 1.0
+     doubles is exactly where a rounding bug hides, and it hides best when
+     it is spread across the same map that lays out columns.
+
+  Rejects are carried alongside rather than thrown, so one unmappable loan
+  does not cost the other four hundred participants their repayment posting.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tns="http://xmlns.oracle.com/hcm/principal401k/canonical"
+            targetNamespace="http://xmlns.oracle.com/hcm/principal401k/canonical"
+            elementFormDefault="qualified">
+
+  <xsd:element name="LoanBatch">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="RunId" type="xsd:string"/>
+        <xsd:element name="ContractNumber" type="xsd:string"/>
+        <xsd:element name="PayPeriodEndDate" type="xsd:string"/>
+        <xsd:element name="CheckDate" type="xsd:string"/>
+
+        <xsd:element name="Loan" minOccurs="0" maxOccurs="unbounded">
+          <xsd:complexType>
+            <xsd:sequence>
+              <!-- 9 digits, no punctuation, already masked if ssnPolicy said
+                   so. -->
+              <xsd:element name="Ssn" type="xsd:string"/>
+              <xsd:element name="EmployeeId" type="xsd:string"/>
+              <xsd:element name="LastName" type="xsd:string"/>
+              <xsd:element name="FirstName" type="xsd:string"/>
+              <xsd:element name="MiddleInitial" type="xsd:string" minOccurs="0"/>
+
+              <xsd:element name="LoanNumber" type="xsd:string"/>
+              <xsd:element name="LoanTypeCode" type="xsd:string"/>
+              <xsd:element name="LoanStatusCode" type="xsd:string"/>
+
+              <!-- Signed integer cents. Negative is legitimate: a reversed or
+                   over-collected deduction is remitted back as a negative
+                   repayment, and Principal nets it. -->
+              <xsd:element name="RepaymentAmountCents" type="xsd:long"/>
+              <xsd:element name="PayoffAmountCents" type="xsd:long"/>
+              <xsd:element name="OutstandingBalanceCents" type="xsd:long"/>
+
+              <!-- CCYYMMDD, or empty. The formatting map pads an empty
+                   date out to spaces wherever the layout permits a blank
+                   one; emitting the spaces here instead would leave them at
+                   the mercy of XML whitespace handling. -->
+              <xsd:element name="PayPeriodEndDate" type="xsd:string"/>
+              <xsd:element name="CheckDate" type="xsd:string"/>
+              <xsd:element name="LoanOriginationDate" type="xsd:string"/>
+              <xsd:element name="LastPaymentDate" type="xsd:string" minOccurs="0"/>
+              <xsd:element name="TerminationDate" type="xsd:string" minOccurs="0"/>
+              <xsd:element name="TerminationIndicator" type="xsd:string"/>
+
+              <xsd:element name="SourceCode" type="xsd:string"/>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+
+        <!-- Control totals, computed here so the trailer is not recomputed
+             from the formatted rows. A trailer derived from the same numbers
+             the details were built from cannot detect a formatting bug in the
+             details, which is the whole point of the reconciliation step. -->
+        <xsd:element name="Totals">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="DetailCount" type="xsd:int"/>
+              <xsd:element name="TotalRepaymentCents" type="xsd:long"/>
+              <xsd:element name="TotalPayoffCents" type="xsd:long"/>
+              <xsd:element name="TotalOutstandingCents" type="xsd:long"/>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+
+        <xsd:element name="Reject" minOccurs="0" maxOccurs="unbounded">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="EmployeeId" type="xsd:string" minOccurs="0"/>
+              <xsd:element name="LoanNumber" type="xsd:string" minOccurs="0"/>
+              <!-- MISSING_LOAN_NUMBER | UNMAPPED_LOAN_TYPE |
+                   MISSING_NATIONAL_ID | MISSING_CONTRACT | MISSING_NAME |
+                   AMOUNT_OVERFLOW -->
+              <xsd:element name="Reason" type="xsd:string"/>
+              <xsd:element name="Message" type="xsd:string"/>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

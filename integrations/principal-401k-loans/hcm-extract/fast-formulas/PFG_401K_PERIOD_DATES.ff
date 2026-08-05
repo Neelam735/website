@@ -1,0 +1,61 @@
+/******************************************************************************
+ * PFG_401K_PERIOD_DATES
+ *
+ * Type          : Extract Rule
+ * Attached to   : Extract parameters "Period End Date" and "Check Date"
+ * Returns       : L_PERIOD_END_DATE, L_CHECK_DATE
+ *
+ * Resolves which payroll period the run covers, from the payroll and the
+ * effective date, rather than letting either be typed in.
+ *
+ * The reason is reruns. A file is identified at Principal's end by its
+ * contract and its period end date, and our own duplicate guard keys on the
+ * same pair. If the period were an operator-entered parameter, a rerun with
+ * yesterday's effective date and this period's end date would produce a file
+ * that looks like a period already delivered and is not - or, worse, one that
+ * passes the duplicate check and posts a second set of repayments against a
+ * period that was already settled.
+ *
+ * Deriving both dates from the payroll definition means the effective date is
+ * the only thing an operator supplies, and any two runs for the same
+ * effective date describe the same period.
+ *
+ * The period selected is the one whose end date is on or before the effective
+ * date - the last period that has actually closed. Selecting the period the
+ * effective date falls *inside* would pick up a period payroll has not yet
+ * confirmed, and report repayments that have not been withheld.
+ *****************************************************************************/
+
+DEFAULT FOR PAY_PAYROLL_PERIOD_END_DATE IS '4712/12/31 00:00:00' (date)
+DEFAULT FOR PAY_PAYROLL_PERIOD_DIRECT_DEPOSIT_DATE IS '4712/12/31 00:00:00' (date)
+DEFAULT FOR PAY_PAYROLL_ACTION_STATUS IS 'U'
+
+INPUTS ARE EFFECTIVE_DATE (date), PAYROLL_NAME (text)
+
+L_PERIOD_END_DATE = PAY_PAYROLL_PERIOD_END_DATE
+L_CHECK_DATE      = PAY_PAYROLL_PERIOD_DIRECT_DEPOSIT_DATE
+
+/* Principal reconciles a repayment against the date the money reached the
+   participant's bank, not the date the period ended. Where a payroll has no
+   direct deposit date - an off-cycle paid by cheque - the period end date
+   stands in, which is what Principal's profile asks for. */
+IF L_CHECK_DATE = TO_DATE('4712/12/31', 'YYYY/MM/DD') THEN
+(
+  L_CHECK_DATE = L_PERIOD_END_DATE
+)
+
+/* An unconfirmed payroll has no run results worth extracting. Returning the
+   end-of-time date makes that visible: the file's header carries 47121231,
+   the canonical map passes it through, and it is caught in review rather than
+   quietly delivering a period of zeros.
+
+   This is deliberately not a formula error. An error here fails the whole
+   extract with a message nobody can act on; an obviously wrong date in the
+   header is diagnosable in one look. */
+IF PAY_PAYROLL_ACTION_STATUS <> 'C' THEN
+(
+  L_PERIOD_END_DATE = TO_DATE('4712/12/31', 'YYYY/MM/DD')
+  L_CHECK_DATE      = TO_DATE('4712/12/31', 'YYYY/MM/DD')
+)
+
+RETURN L_PERIOD_END_DATE, L_CHECK_DATE

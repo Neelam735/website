@@ -1,0 +1,52 @@
+/******************************************************************************
+ * PFG_401K_LOAN_PAYOFF
+ *
+ * Type          : Extract Rule
+ * Attached to   : Data group "Loan", attribute "Payoff Amount"
+ * Returns       : L_PAYOFF, a number with two decimal places
+ *
+ * Non-zero only when the loan was settled in full in this payroll period.
+ * Zero for every ordinary repayment.
+ *
+ * Principal reads a non-zero payoff as "close this loan", so the test has to
+ * be exact. A loan is settled when the balance after this period's withholding
+ * is zero or less. Two cases produce that, and only the second one is
+ * interesting:
+ *
+ *   - the final scheduled repayment, which lands exactly on zero;
+ *   - a lump-sum payoff, where the participant repaid the remainder, usually
+ *     out of a final cheque.
+ *
+ * Both report the settling amount as the payoff and the same amount as the
+ * repayment, because the money moved once and Principal posts the repayment;
+ * the payoff field tells them what the movement *meant*. Sending the payoff
+ * without the repayment would close the loan without crediting the money.
+ *
+ * A negative closing balance - over-collection - reports the actual amount
+ * withheld, not the amount that was owed. The excess is Principal's to refund
+ * and they can only do that if they are told what was taken.
+ *****************************************************************************/
+
+DEFAULT FOR X_401K_LOAN_ORIGINAL_AMOUNT IS 0
+DEFAULT FOR X_401K_LOAN_REPAYMENT_EE_ITD IS 0
+DEFAULT FOR X_401K_LOAN_REPAYMENT_EE_RUN IS 0
+
+L_PAYOFF = 0
+
+L_ORIGINAL     = X_401K_LOAN_ORIGINAL_AMOUNT
+L_REPAID_ITD   = X_401K_LOAN_REPAYMENT_EE_ITD
+L_THIS_PERIOD  = X_401K_LOAN_REPAYMENT_EE_RUN
+
+/* ITD already includes this period's run, so the closing balance is simply
+   principal less ITD. Subtracting L_THIS_PERIOD again here is the arithmetic
+   slip that makes every final repayment look like an over-collection. */
+L_CLOSING = L_ORIGINAL - L_REPAID_ITD
+
+IF L_ORIGINAL > 0
+   AND L_CLOSING <= 0
+   AND L_THIS_PERIOD <> 0 THEN
+(
+  L_PAYOFF = L_THIS_PERIOD
+)
+
+RETURN L_PAYOFF

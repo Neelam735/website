@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Schedule definition. Weekly on Monday at 05:00 in the instance timezone -
+  after the semi-monthly payroll run has confirmed and its costing has
+  completed, and inside Principal's stated 06:00-18:00 ET collection window.
+
+  Payroll frequency, not the calendar, is what this should track. On a
+  semi-monthly payroll the run must land after each of the two confirms, which
+  is why the frequency below is weekly with a zero-record policy of SEND_EMPTY
+  rather than an exact twice-monthly cron: a week with no confirm sends a
+  header and trailer, and Principal sees the feed is alive.
+
+  The schedule is imported alongside the integration but must still be started
+  in the console; importing an archive does not start a schedule.
+-->
+<schedule xmlns="http://xmlns.oracle.com/ics/schedule">
+  <integrationCode>PRINCIPAL_401K_LOANS</integrationCode>
+  <integrationVersion>01.00.0000</integrationVersion>
+  <name>PRINCIPAL_401K_LOANS_SCHEDULE</name>
+  <description>Weekly Principal 401(k) loan repayment file.</description>
+  <frequency>WEEKLY</frequency>
+  <daysOfWeek>MON</daysOfWeek>
+  <startHour>5</startHour>
+  <startMinute>0</startMinute>
+  <timeZone>UTC</timeZone>
+  <enabled>false</enabled>
+</schedule>

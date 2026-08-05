@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Legal employer -> Principal contract number.
+
+  The contract number goes in the header and the trailer and is how Principal
+  routes the file to the right plan. One file per contract: a legal employer
+  on a different contract is a different file, not a different detail row.
+
+  A legal employer in the extract with no row here is a business fault. The
+  alternative - dropping those rows - loses a whole company's loan repayments
+  with no signal, which is exactly the failure that goes unnoticed until a
+  participant's loan defaults.
+-->
+<lookup xmlns="http://xmlns.oracle.com/ics/lookup" name="PFG_401K_CONTRACT">
+  <description>Maps the HCM legal employer name to the Principal contract number that governs its 401(k) plan.</description>
+  <adapters>
+    <adapter name="ORACLE_HCM"/>
+    <adapter name="PRINCIPAL"/>
+  </adapters>
+  <rows>
+    <row>
+      <column adapter="ORACLE_HCM">ACME Corporation US</column>
+      <column adapter="PRINCIPAL">40012345</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">ACME Services LLC</column>
+      <column adapter="PRINCIPAL">40012346</column>
+    </row>
+  </rows>
+</lookup>

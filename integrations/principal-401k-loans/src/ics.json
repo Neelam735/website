@@ -1,0 +1,25 @@
+{
+  "archiveType": "INTEGRATION",
+  "exportedBy": "build_iar.py",
+  "schemaVersion": "1.0",
+  "integrations": [
+    {
+      "code": "PRINCIPAL_401K_LOANS",
+      "version": "01.00.0000",
+      "name": "Principal 401(k) Loans - Outbound File",
+      "pattern": "SCHEDULED_ORCHESTRATION",
+      "status": "CONFIGURED"
+    }
+  ],
+  "connections": [
+    { "code": "HCM_PRINCIPAL_401K", "adapterType": "oraclehcmcloud" },
+    { "code": "SFTP_PRINCIPAL_401K", "adapterType": "ftp" },
+    { "code": "SMTP_NOTIFY", "adapterType": "oraclecloudnotification" }
+  ],
+  "lookups": [
+    { "code": "PFG_401K_LOAN_TYPE" },
+    { "code": "PFG_401K_LOAN_STATUS" },
+    { "code": "PFG_401K_CONTRACT" },
+    { "code": "PFG_401K_SOURCE_CODE" }
+  ]
+}

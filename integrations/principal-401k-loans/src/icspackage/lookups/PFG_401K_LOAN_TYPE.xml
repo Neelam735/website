@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  HCM element name -> Principal loan type code.
+
+  Principal distinguishes general-purpose loans (01) from primary-residence
+  loans (02) because the two have different maximum terms, and they reconcile
+  amortisation against the code we send. Getting it wrong does not fail the
+  file; it fails their amortisation check a month later.
+
+  This is data, not configuration, which is why it is a lookup rather than an
+  integration property: benefits adds a loan element without a redeploy.
+
+  A loan whose element name is not listed here is a business fault, not a
+  silent default. Defaulting to 01 would quietly misclassify every residential
+  loan the day someone renames an element.
+-->
+<lookup xmlns="http://xmlns.oracle.com/ics/lookup" name="PFG_401K_LOAN_TYPE">
+  <description>Maps the HCM loan repayment element name to Principal's two-character loan type code.</description>
+  <adapters>
+    <adapter name="ORACLE_HCM"/>
+    <adapter name="PRINCIPAL"/>
+  </adapters>
+  <rows>
+    <row>
+      <column adapter="ORACLE_HCM">401k Loan Repayment</column>
+      <column adapter="PRINCIPAL">01</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">401k Loan Repayment General</column>
+      <column adapter="PRINCIPAL">01</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">401k Loan Repayment Residential</column>
+      <column adapter="PRINCIPAL">02</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">401k Loan Repayment Primary Residence</column>
+      <column adapter="PRINCIPAL">02</column>
+    </row>
+  </rows>
+</lookup>
