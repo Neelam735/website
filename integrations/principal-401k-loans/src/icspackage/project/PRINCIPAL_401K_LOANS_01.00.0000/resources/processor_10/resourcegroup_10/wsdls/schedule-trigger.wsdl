@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Trigger contract for the scheduled orchestration. The schedule parameters
+  are the integration's only external inputs; declaring them here is what lets
+  them be overridden per environment from the OIC console, and per run from
+  "Submit Now", without a rebuild.
+
+  Every element is optional. An omitted parameter falls back to the default in
+  ics_project_attributes.properties, so an ad-hoc rerun only has to state what
+  differs from the scheduled run - usually just runDate.
+-->
+<wsdl:definitions
+    name="Principal401kLoansSchedule"
+    targetNamespace="http://xmlns.oracle.com/hcm/principal401k/schedule"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="http://xmlns.oracle.com/hcm/principal401k/schedule">
+
+  <wsdl:types>
+    <xsd:schema targetNamespace="http://xmlns.oracle.com/hcm/principal401k/schedule"
+                elementFormDefault="qualified">
+      <xsd:element name="ScheduleRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <!-- Effective date for the extract, YYYY-MM-DD. Blank means the
+                 date the run starts. Set it to rerun a past period. -->
+            <xsd:element name="runDate"               type="xsd:string" minOccurs="0"/>
+            <!-- The HCM Extract definition name, exactly as it appears in
+                 Data Exchange. -->
+            <xsd:element name="extractName"           type="xsd:string" minOccurs="0"/>
+            <!-- Y skips submission and reuses the most recent successful
+                 extract output for runDate. Used when the extract succeeded
+                 but delivery failed, so HCM is not asked to recompute a
+                 payroll period it has already reported on. -->
+            <xsd:element name="reprocessFlag"         type="xsd:string" minOccurs="0"/>
+
+            <xsd:element name="payrollName"           type="xsd:string" minOccurs="0"/>
+            <xsd:element name="legalEmployerName"     type="xsd:string" minOccurs="0"/>
+            <xsd:element name="changesOnly"           type="xsd:string" minOccurs="0"/>
+
+            <xsd:element name="pollIntervalSeconds"   type="xsd:int"    minOccurs="0"/>
+            <xsd:element name="pollBackoffFactor"     type="xsd:int"    minOccurs="0"/>
+            <xsd:element name="pollMaxIntervalSeconds" type="xsd:int"   minOccurs="0"/>
+            <xsd:element name="maxPollAttempts"       type="xsd:int"    minOccurs="0"/>
+
+            <xsd:element name="ucmAccount"            type="xsd:string" minOccurs="0"/>
+            <xsd:element name="ucmTitlePrefix"        type="xsd:string" minOccurs="0"/>
+            <xsd:element name="ucmArchiveAccount"     type="xsd:string" minOccurs="0"/>
+
+            <xsd:element name="remoteDirectory"       type="xsd:string" minOccurs="0"/>
+            <xsd:element name="tempSuffix"            type="xsd:string" minOccurs="0"/>
+            <xsd:element name="triggerFileEnabled"    type="xsd:string" minOccurs="0"/>
+            <xsd:element name="triggerFileSuffix"     type="xsd:string" minOccurs="0"/>
+            <xsd:element name="archiveDirectory"      type="xsd:string" minOccurs="0"/>
+            <xsd:element name="pgpEncryptionEnabled"  type="xsd:string" minOccurs="0"/>
+            <xsd:element name="pgpPublicKeyAlias"     type="xsd:string" minOccurs="0"/>
+            <xsd:element name="pgpArmored"            type="xsd:string" minOccurs="0"/>
+
+            <!-- T or P. Anything other than P is treated as a test
+                 transmission; Principal loads a test file into their
+                 validation environment only. -->
+            <xsd:element name="testProductionFlag"    type="xsd:string" minOccurs="0"/>
+            <xsd:element name="senderId"              type="xsd:string" minOccurs="0"/>
+            <xsd:element name="fileVersion"           type="xsd:string" minOccurs="0"/>
+            <!-- SEND_EMPTY or SKIP_SEND. -->
+            <xsd:element name="zeroRecordPolicy"      type="xsd:string" minOccurs="0"/>
+            <!-- FULL or MASKED. MASKED is for non-production only. -->
+            <xsd:element name="ssnPolicy"             type="xsd:string" minOccurs="0"/>
+
+            <xsd:element name="environmentName"       type="xsd:string" minOccurs="0"/>
+            <xsd:element name="notifyTo"              type="xsd:string" minOccurs="0"/>
+            <xsd:element name="notifyBusinessTo"      type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="ScheduleRequestMessage">
+    <wsdl:part name="request" element="tns:ScheduleRequest"/>
+  </wsdl:message>
+
+  <wsdl:portType name="ScheduleTriggerPortType">
+    <wsdl:operation name="run">
+      <wsdl:input message="tns:ScheduleRequestMessage"/>
+    </wsdl:operation>
+  </wsdl:portType>
+</wsdl:definitions>

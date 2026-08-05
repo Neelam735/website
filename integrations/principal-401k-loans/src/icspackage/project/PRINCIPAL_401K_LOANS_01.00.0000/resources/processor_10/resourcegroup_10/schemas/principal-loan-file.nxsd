@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Write-side native format for the Principal loan repayment file.
+
+  Each record is emitted as one already-padded 200-character line. The XSLT
+  builds the fixed-width payload; this schema only knows how to terminate
+  lines.
+
+  That split is deliberate. nXSD can describe fixed-width fields with
+  nxsd:style="fixedLength", and doing it that way would put half the layout in
+  this file and half in the map. When a position moves, it would have to move
+  in both, and the two would be checked by nothing. Keeping every position in
+  one place - map_canonical_to_principal.xsl, mirrored by
+  tools/generate_principal_file.py, with tests/test_layout.py asserting the
+  positions - means the layout is verifiable by reading one table.
+
+  Line terminator is CRLF, not the platform default: Principal's mainframe
+  loader treats a bare LF as a truncated record and rejects the file whole.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:nxsd="http://xmlns.oracle.com/pcbpel/nxsd"
+            xmlns:tns="http://xmlns.oracle.com/hcm/principal401k/file"
+            targetNamespace="http://xmlns.oracle.com/hcm/principal401k/file"
+            elementFormDefault="qualified"
+            nxsd:version="NXSD"
+            nxsd:stream="chars"
+            nxsd:encoding="US-ASCII">
+
+  <xsd:element name="LoanFile">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="Line" type="xsd:string" minOccurs="0"
+                     maxOccurs="unbounded"
+                     nxsd:style="terminated"
+                     nxsd:terminatedBy="${crlf}"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

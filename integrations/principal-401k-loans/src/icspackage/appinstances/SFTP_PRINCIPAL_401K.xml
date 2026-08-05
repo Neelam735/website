@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Connection (app instance) descriptor for Principal Financial Group's SFTP.
+
+  Credentials are deliberately absent: OIC does not export secrets, and the
+  import wizard prompts for them. Every ${...} below is a placeholder to be
+  replaced per environment.
+
+  Two properties here are not optional in production and are the ones most
+  often skipped:
+
+  hostKeyFingerprint - without it, the first connection to an impostor host
+  succeeds silently, and this file carries national identifiers.
+
+  pgpEncryption - Principal's onboarding profile requires PGP on the loan
+  feed. Their public key is registered in the OIC certificate store under the
+  alias in the pgpPublicKeyAlias integration property; nothing about the key
+  lives in this archive.
+-->
+<appinstance xmlns="http://xmlns.oracle.com/ics/appinstance">
+  <code>SFTP_PRINCIPAL_401K</code>
+  <name>Principal Financial Group SFTP</name>
+  <description>Principal's SFTP endpoint for the 401(k) loan repayment file, its trigger file, the run summary and the delivery archive.</description>
+  <adapterType>ftp</adapterType>
+  <role>INVOKE</role>
+  <properties>
+    <property name="hostAddress" value="${PFG_SFTP_HOST}"/>
+    <property name="port" value="22"/>
+    <property name="sftp" value="yes"/>
+    <property name="hostKeyFingerprint" value="${PFG_SFTP_HOST_KEY_FINGERPRINT}"/>
+    <property name="pgpEncryption" value="yes"/>
+    <!-- Signing is off: Principal's profile asks for encryption only. Turning
+         it on without telling them makes every file undecryptable at their
+         end. -->
+    <property name="pgpSigning" value="no"/>
+  </properties>
+  <securityPolicy>
+    <policy>FTP Server Access Policy</policy>
+    <authenticationType>PUBLIC_KEY</authenticationType>
+    <property name="username" value="${PFG_SFTP_USER}"/>
+    <property name="privateKeyAlias" value="${PFG_SFTP_KEY_ALIAS}"/>
+  </securityPolicy>
+</appinstance>

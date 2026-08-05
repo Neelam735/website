@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The XML the HCM Extract writes to UCM.
+
+  The element names below are the Tag Name values set on the extract's data
+  groups, records and attributes - see
+  hcm-extract/PRINCIPAL_401K_LOANS_EXTRACT.xml, where each attribute's tag
+  name is stated next to the user entity it reads from. HCM does not invent
+  these; whoever builds the extract chooses them, and they must match this
+  schema exactly or map_extract_to_canonical.xsl silently produces an empty
+  file. The nesting mirrors the data group hierarchy:
+
+      DATA_DS
+        G_LEGAL_EMPLOYER          one per legal employer in scope
+          G_EMPLOYEE              one per worker with at least one loan
+            G_LOAN                one per loan repayment element entry
+
+  A worker with two concurrent loans produces two G_LOAN nodes under one
+  G_EMPLOYEE, which is why the loan, not the employee, is the detail grain.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tns="http://xmlns.oracle.com/hcm/principal401k/extract"
+            targetNamespace="http://xmlns.oracle.com/hcm/principal401k/extract"
+            elementFormDefault="qualified">
+
+  <xsd:element name="DATA_DS">
+    <xsd:complexType>
+      <xsd:sequence>
+        <!-- Stamped by the extract's parameter record so the file can state
+             the period it covers without OIC having to guess it. -->
+        <xsd:element name="EXTRACT_NAME"        type="xsd:string" minOccurs="0"/>
+        <xsd:element name="EFFECTIVE_DATE"      type="xsd:string" minOccurs="0"/>
+        <xsd:element name="PAYROLL_NAME"        type="xsd:string" minOccurs="0"/>
+        <xsd:element name="PERIOD_END_DATE"     type="xsd:string" minOccurs="0"/>
+        <xsd:element name="CHECK_DATE"          type="xsd:string" minOccurs="0"/>
+        <xsd:element name="CHANGES_ONLY"        type="xsd:string" minOccurs="0"/>
+
+        <xsd:element name="G_LEGAL_EMPLOYER" minOccurs="0" maxOccurs="unbounded">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="LEGAL_EMPLOYER_NAME" type="xsd:string"/>
+
+              <xsd:element name="G_EMPLOYEE" minOccurs="0" maxOccurs="unbounded">
+                <xsd:complexType>
+                  <xsd:sequence>
+                    <xsd:element name="PERSON_NUMBER"     type="xsd:string"/>
+                    <!-- Unformatted national identifier. It is masked or
+                         passed through in OIC according to ssnPolicy; the
+                         extract always delivers it in full because an extract
+                         cannot be re-run to recover a value it did not
+                         emit. -->
+                    <xsd:element name="NATIONAL_ID"       type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="LAST_NAME"         type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="FIRST_NAME"        type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="MIDDLE_NAMES"      type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="ASSIGNMENT_STATUS" type="xsd:string" minOccurs="0"/>
+                    <!-- Present only for a worker whose work relationship
+                         ended; drives the termination fields Principal uses
+                         to accelerate or default a loan. -->
+                    <xsd:element name="TERMINATION_DATE"  type="xsd:string" minOccurs="0"/>
+
+                    <xsd:element name="G_LOAN" minOccurs="0" maxOccurs="unbounded">
+                      <xsd:complexType>
+                        <xsd:sequence>
+                          <!-- Element name, used against the
+                               PFG_401K_LOAN_TYPE lookup. -->
+                          <xsd:element name="ELEMENT_NAME"        type="xsd:string"/>
+                          <!-- Principal's own loan identifier, held on the
+                               element entry DFF. See docs/field-mapping.md
+                               for what to do when it is absent. -->
+                          <xsd:element name="LOAN_NUMBER"         type="xsd:string" minOccurs="0"/>
+                          <xsd:element name="LOAN_ORIGINATION_DATE" type="xsd:string" minOccurs="0"/>
+                          <xsd:element name="ORIGINAL_LOAN_AMOUNT" type="xsd:string" minOccurs="0"/>
+                          <!-- Amount actually withheld in the payroll period
+                               the file covers. Zero for a suspended loan. -->
+                          <xsd:element name="REPAYMENT_AMOUNT"    type="xsd:string" minOccurs="0"/>
+                          <!-- Non-zero only when the loan was settled in
+                               full this period. -->
+                          <xsd:element name="PAYOFF_AMOUNT"       type="xsd:string" minOccurs="0"/>
+                          <xsd:element name="OUTSTANDING_BALANCE" type="xsd:string" minOccurs="0"/>
+                          <xsd:element name="LAST_PAYMENT_DATE"   type="xsd:string" minOccurs="0"/>
+                          <!-- ACTIVE | PAID_OFF | DEFAULTED | SUSPENDED,
+                               derived by PFG_401K_LOAN_STATUS.ff. -->
+                          <xsd:element name="LOAN_STATUS"         type="xsd:string" minOccurs="0"/>
+                          <xsd:element name="PAYROLL_NAME"        type="xsd:string" minOccurs="0"/>
+                          <xsd:element name="PERIOD_END_DATE"     type="xsd:string" minOccurs="0"/>
+                          <xsd:element name="CHECK_DATE"          type="xsd:string" minOccurs="0"/>
+                        </xsd:sequence>
+                      </xsd:complexType>
+                    </xsd:element>
+                  </xsd:sequence>
+                </xsd:complexType>
+              </xsd:element>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

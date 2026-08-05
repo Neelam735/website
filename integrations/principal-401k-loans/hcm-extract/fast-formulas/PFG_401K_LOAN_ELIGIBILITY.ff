@@ -1,0 +1,79 @@
+/******************************************************************************
+ * PFG_401K_LOAN_ELIGIBILITY
+ *
+ * Type          : Extract Rule
+ * Attached to   : Data group "Employee", filter criteria
+ * Returns       : L_INCLUDE, 'Y' to keep the worker in the extract
+ *
+ * Decides whether a worker appears in the Principal 401(k) loan file at all.
+ * The loan-level filter below this one decides which of their loans appear.
+ *
+ * The rule this formula exists to get right:
+ *
+ *   A terminated worker with an outstanding loan belongs in the file.
+ *
+ * The obvious filter - assignment status is ACTIVE - is wrong, and wrong in
+ * the direction that costs a participant money. Principal starts a loan's
+ * cure period from the termination date we send them; if the worker drops out
+ * of the file the week they leave, Principal never learns they left, the
+ * repayments simply stop arriving, and the loan defaults as a deemed
+ * distribution with the tax consequences that carries. The participant finds
+ * out at year end.
+ *
+ * So the test is about the loan, not the employment: include a worker if
+ * money moved this period, or if money is still owed.
+ *
+ * Note that a worker on unpaid leave with a suspended deduction is included
+ * by the second arm - balance outstanding, nothing withheld - and reaches
+ * Principal as a zero repayment with status S. That is the correct signal:
+ * silence would look identical to a broken feed.
+ *****************************************************************************/
+
+DEFAULT FOR PER_ASG_ASSIGNMENT_STATUS_TYPE IS 'ACTIVE'
+DEFAULT FOR PER_ASG_REL_ACTUAL_TERMINATION_DATE IS '4712/12/31 00:00:00' (date)
+DEFAULT FOR X_401K_LOAN_REPAYMENT_ASG_RUN IS 0
+DEFAULT FOR X_401K_LOAN_REPAYMENT_ASG_ITD IS 0
+DEFAULT FOR X_401K_LOAN_ORIGINAL_AMOUNT IS 0
+
+INPUTS ARE EFFECTIVE_DATE (date)
+
+L_INCLUDE = 'N'
+
+/* Withheld in the payroll run this extract covers. A reversal makes this
+   negative, which still means money moved and still has to be reported. */
+L_THIS_PERIOD = X_401K_LOAN_REPAYMENT_ASG_RUN
+
+/* Original principal less everything repaid since inception. Held on the
+   element entry DFF rather than in a balance because HCM has no notion of a
+   loan; see PFG_401K_LOAN_BALANCE. */
+L_BALANCE = X_401K_LOAN_ORIGINAL_AMOUNT - X_401K_LOAN_REPAYMENT_ASG_ITD
+
+IF L_BALANCE < 0 THEN
+(
+  /* Over-collected. Still reportable - Principal nets the excess back to the
+     participant - and clamping it to zero here would hide the over-collection
+     from the only party able to correct it. */
+  L_BALANCE = L_BALANCE
+)
+
+IF L_THIS_PERIOD <> 0 THEN
+(
+  L_INCLUDE = 'Y'
+)
+ELSE IF L_BALANCE <> 0 THEN
+(
+  L_INCLUDE = 'Y'
+)
+
+/* A worker terminated in a prior period whose loan is settled has nothing
+   left to report; carrying them forever grows the file without end. Both
+   conditions are required: settled but still employed keeps them in for the
+   final zero-balance row that tells Principal the loan closed. */
+IF PER_ASG_REL_ACTUAL_TERMINATION_DATE < EFFECTIVE_DATE
+   AND L_BALANCE = 0
+   AND L_THIS_PERIOD = 0 THEN
+(
+  L_INCLUDE = 'N'
+)
+
+RETURN L_INCLUDE

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Oracle HCM Cloud adapter. Used for four things: submitting the extract's ESS
+  job, reading its status, retrieving the generated output from UCM, and
+  writing the archive copy back to UCM.
+
+  The integration user needs, at minimum:
+    Human Capital Management Integration Specialist
+    Payroll Interface Coordinator      (submit and monitor the extract)
+    Compensation Administrator          (element entry data in the extract)
+    Attachments User                    (UCM read and write)
+  plus data-role security giving it access to every legal employer in scope.
+  Grant a dedicated account, not a named person's: a leaver disabling the
+  account takes the weekly remittance down with them, and Principal notices a
+  missed file before we do.
+
+  Credentials are deliberately absent: OIC does not export secrets, and the
+  import wizard prompts for them.
+-->
+<appinstance xmlns="http://xmlns.oracle.com/ics/appinstance">
+  <code>HCM_PRINCIPAL_401K</code>
+  <name>Oracle HCM Cloud - Principal 401(k)</name>
+  <description>Source Fusion HCM pod for the Principal 401(k) loan extract, and the UCM repository its output and archive live in.</description>
+  <adapterType>oraclehcmcloud</adapterType>
+  <role>INVOKE</role>
+  <properties>
+    <!-- e.g. https://your-pod.fa.us2.oraclecloud.com - no trailing slash. -->
+    <property name="hcmServiceHost" value="${HCM_HOST}"/>
+    <property name="ucmServiceHost" value="${HCM_HOST}"/>
+    <!-- ExtractFlowService/ErpIntegrationService for submitESSJobRequest and
+         getESSJobStatus; GenericSoapPort for the UCM get and put. -->
+    <property name="interfaceCatalog" value="HCM_EXTRACTS"/>
+  </properties>
+  <securityPolicy>
+    <policy>Username Password Token</policy>
+    <property name="username" value="${HCM_INTEGRATION_USER}"/>
+    <property name="password" value="${HCM_INTEGRATION_PASSWORD}"/>
+  </securityPolicy>
+</appinstance>

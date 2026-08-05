@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  BI Publisher data model for the Principal 401(k) loans extract.
+
+  An HCM Extract writes its archived output through a data model, and this one
+  is deliberately thin: a single XML data set fed by the extract's own archive,
+  with no SQL of its own. Every filter, join and derivation lives in the
+  extract definition and its fast formulas, where it is date-effective and
+  runs under the extract's data-role security.
+
+  Putting a SQL data set here instead is the shortcut worth naming and
+  refusing. It works, it is quicker to write, and it silently bypasses HCM's
+  security model - a data model query runs with the privileges of whoever
+  submits it, not with the data role that scopes the extract, so it can return
+  legal employers the integration user is not entitled to see. For a file
+  carrying national identifiers, that is the whole ballgame.
+
+  The group structure below mirrors the extract's data groups exactly, because
+  the eText template addresses them by name.
+-->
+<dataModel xmlns="http://xmlns.oracle.com/oxp/xmlp"
+           version="2.0"
+           defaultDataSourceRef="ApplicationDB_HCM">
+
+  <description>Principal 401(k) loan repayments, sourced from the PFG_401K_LOANS_OUT extract archive.</description>
+
+  <dataProperties>
+    <property name="include_parameters" value="true"/>
+    <property name="include_null_Element" value="false"/>
+    <property name="xml_tag_case" value="upper"/>
+    <!-- Scalable mode streams the archive to disk instead of building the
+         whole document in memory. A quarter-end run with a full population
+         behind it is tens of megabytes of XML, and the failure without this
+         is an out-of-memory error in the BI server that reads as an
+         infrastructure fault rather than a sizing one. -->
+    <property name="scalable_mode" value="on"/>
+    <property name="sql_monitor_report_generated" value="false"/>
+  </dataProperties>
+
+  <parameters>
+    <parameter name="EFFECTIVE_DATE"       dataType="xsd:date"   defaultValue=""/>
+    <parameter name="PAYROLL_NAME"         dataType="xsd:string" defaultValue=""/>
+    <parameter name="LEGAL_EMPLOYER_PARAM" dataType="xsd:string" defaultValue=""/>
+    <parameter name="CHANGES_ONLY"         dataType="xsd:string" defaultValue="N"/>
+    <parameter name="PERIOD_END_DATE"      dataType="xsd:date"   defaultValue=""/>
+    <parameter name="CHECK_DATE"           dataType="xsd:date"   defaultValue=""/>
+  </parameters>
+
+  <dataSets>
+    <!-- The extract archive, addressed by the extract's code. BI Publisher
+         reads the archived rows rather than re-querying the source, which is
+         what makes a rerun for a closed period return what the period
+         actually held rather than what it holds today. -->
+    <dataSet name="PFG_401K_LOANS" type="hcmExtract">
+      <hcmExtract>
+        <extractCode>PFG_401K_LOANS_OUT</extractCode>
+        <rootElement>DATA_DS</rootElement>
+      </hcmExtract>
+    </dataSet>
+  </dataSets>
+
+  <!-- Group names and element names are the extract's tag names. They are
+       repeated here because the eText template addresses them, and because a
+       rename in the extract that is not made here produces an empty file
+       rather than an error. -->
+  <dataStructure>
+    <group name="DATA_DS" source="PFG_401K_LOANS">
+      <element name="EXTRACT_NAME"    value="EXTRACT_NAME"/>
+      <element name="EFFECTIVE_DATE"  value="EFFECTIVE_DATE"/>
+      <element name="PAYROLL_NAME"    value="PAYROLL_NAME"/>
+      <element name="PERIOD_END_DATE" value="PERIOD_END_DATE"/>
+      <element name="CHECK_DATE"      value="CHECK_DATE"/>
+      <element name="CHANGES_ONLY"    value="CHANGES_ONLY"/>
+
+      <group name="G_LEGAL_EMPLOYER" source="PFG_401K_LOANS">
+        <element name="LEGAL_EMPLOYER_NAME" value="LEGAL_EMPLOYER_NAME"/>
+
+        <group name="G_EMPLOYEE" source="PFG_401K_LOANS">
+          <element name="PERSON_NUMBER"     value="PERSON_NUMBER"/>
+          <element name="NATIONAL_ID"       value="NATIONAL_ID"/>
+          <element name="LAST_NAME"         value="LAST_NAME"/>
+          <element name="FIRST_NAME"        value="FIRST_NAME"/>
+          <element name="MIDDLE_NAMES"      value="MIDDLE_NAMES"/>
+          <element name="ASSIGNMENT_STATUS" value="ASSIGNMENT_STATUS"/>
+          <element name="TERMINATION_DATE"  value="TERMINATION_DATE"/>
+
+          <group name="G_LOAN" source="PFG_401K_LOANS">
+            <element name="ELEMENT_NAME"          value="ELEMENT_NAME"/>
+            <element name="LOAN_NUMBER"           value="LOAN_NUMBER"/>
+            <element name="LOAN_ORIGINATION_DATE" value="LOAN_ORIGINATION_DATE"/>
+            <element name="ORIGINAL_LOAN_AMOUNT"  value="ORIGINAL_LOAN_AMOUNT"/>
+            <element name="REPAYMENT_AMOUNT"      value="REPAYMENT_AMOUNT"/>
+            <element name="PAYOFF_AMOUNT"         value="PAYOFF_AMOUNT"/>
+            <element name="OUTSTANDING_BALANCE"   value="OUTSTANDING_BALANCE"/>
+            <element name="LAST_PAYMENT_DATE"     value="LAST_PAYMENT_DATE"/>
+            <element name="LOAN_STATUS"           value="LOAN_STATUS"/>
+            <element name="PAYROLL_NAME"          value="PAYROLL_NAME"/>
+            <element name="PERIOD_END_DATE"       value="PERIOD_END_DATE"/>
+            <element name="CHECK_DATE"            value="CHECK_DATE"/>
+          </group>
+        </group>
+      </group>
+
+      <!-- Aggregates for the eText trailer. Declared at the top level so the
+           trailer's <LEVEL> can be DATA_DS and the counts cover the whole
+           file rather than one legal employer. -->
+      <element name="TOTAL_LOAN_COUNT"  value="G_LOAN"                function="COUNT"/>
+      <element name="TOTAL_REPAYMENT"   value="G_LOAN.REPAYMENT_AMOUNT"    function="SUM"/>
+      <element name="TOTAL_PAYOFF"      value="G_LOAN.PAYOFF_AMOUNT"       function="SUM"/>
+      <element name="TOTAL_OUTSTANDING" value="G_LOAN.OUTSTANDING_BALANCE" function="SUM"/>
+    </group>
+  </dataStructure>
+</dataModel>

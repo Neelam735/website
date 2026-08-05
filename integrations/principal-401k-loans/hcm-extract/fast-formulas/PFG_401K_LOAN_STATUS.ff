@@ -1,0 +1,97 @@
+/******************************************************************************
+ * PFG_401K_LOAN_STATUS
+ *
+ * Type          : Extract Rule
+ * Attached to   : Data group "Loan", attribute "Loan Status"
+ * Returns       : L_STATUS, one of ACTIVE PAID_OFF DEFAULTED SUSPENDED
+ *
+ * PFG_401K_LOAN_STATUS (the OIC lookup) maps these to Principal's single
+ * character codes. The words are spelled out here rather than emitting A, P,
+ * D and S directly so that the mapping stays maintainable in the console
+ * without a formula change, and so that this formula reads as a decision
+ * rather than as an encoding.
+ *
+ * The distinction that matters is SUSPENDED versus DEFAULTED. Both look
+ * identical in payroll - a loan with a balance and nothing withheld this
+ * period - and they mean opposite things to Principal:
+ *
+ *   SUSPENDED  the deduction is expected to resume, do nothing
+ *   DEFAULTED  the deduction has stopped for good, start the cure period
+ *
+ * Getting this backwards is expensive in both directions. Reporting a worker
+ * on parental leave as DEFAULTED starts a cure period against somebody who is
+ * coming back and whose loan is fine. Reporting a leaver as SUSPENDED leaves
+ * the loan quietly unpaid until Principal's own reconciliation notices,
+ * months later, by which point the tax year may have closed.
+ *
+ * The separator is the work relationship: a worker still employed is
+ * suspended, a worker who has left is defaulting. Employment status is the
+ * only thing in HCM that carries that intent.
+ *
+ * Note that a leaver is reported as DEFAULTED from the first period in which
+ * nothing is withheld, not from the termination date. A worker terminated
+ * mid-period usually has a final repayment taken from their last cheque, and
+ * that period is ACTIVE with a termination date attached - which is what
+ * tells Principal to expect the loan to stop. DEFAULTED follows in the next
+ * period. Sending both signals in the right order is what lets Principal
+ * start the cure period from the right date.
+ *****************************************************************************/
+
+DEFAULT FOR PER_ASG_ASSIGNMENT_STATUS_TYPE IS 'ACTIVE'
+DEFAULT FOR PER_ASG_REL_ACTUAL_TERMINATION_DATE IS '4712/12/31 00:00:00' (date)
+DEFAULT FOR X_401K_LOAN_ORIGINAL_AMOUNT IS 0
+DEFAULT FOR X_401K_LOAN_REPAYMENT_EE_ITD IS 0
+DEFAULT FOR X_401K_LOAN_REPAYMENT_EE_RUN IS 0
+
+INPUTS ARE EFFECTIVE_DATE (date)
+
+L_STATUS = 'ACTIVE'
+
+L_BALANCE     = X_401K_LOAN_ORIGINAL_AMOUNT - X_401K_LOAN_REPAYMENT_EE_ITD
+L_THIS_PERIOD = X_401K_LOAN_REPAYMENT_EE_RUN
+
+L_TERMINATED = 'N'
+IF PER_ASG_REL_ACTUAL_TERMINATION_DATE <= EFFECTIVE_DATE THEN
+(
+  L_TERMINATED = 'Y'
+)
+
+IF L_BALANCE <= 0 AND X_401K_LOAN_ORIGINAL_AMOUNT > 0 THEN
+(
+  /* Settled. Takes precedence over everything below: a leaver who repaid the
+     remainder out of their final cheque has paid the loan off, not defaulted
+     on it, and the two produce very different letters from Principal. */
+  L_STATUS = 'PAID_OFF'
+)
+ELSE IF L_THIS_PERIOD <> 0 THEN
+(
+  /* Money moved and a balance remains. Ordinary. */
+  L_STATUS = 'ACTIVE'
+)
+ELSE IF L_TERMINATED = 'Y' THEN
+(
+  /* Balance outstanding, nothing withheld, no longer employed. Nothing more
+     is coming from payroll. */
+  L_STATUS = 'DEFAULTED'
+)
+ELSE IF PER_ASG_ASSIGNMENT_STATUS_TYPE = 'SUSPENDED'
+        OR PER_ASG_ASSIGNMENT_STATUS_TYPE = 'INACTIVE' THEN
+(
+  /* On leave. Expected back; the deduction resumes with them. */
+  L_STATUS = 'SUSPENDED'
+)
+ELSE
+(
+  /* Balance outstanding, nothing withheld, still actively employed. This is
+     not a loan problem - it is an insufficient-net period, an arrearage, or a
+     deduction somebody ended by mistake. SUSPENDED is the honest answer:
+     something stopped, it is not a default, and Principal's exception report
+     is where it should surface.
+
+     Reporting ACTIVE here instead would send a zero repayment against a live
+     loan and look, to Principal, exactly like a loan being serviced normally
+     for nothing. */
+  L_STATUS = 'SUSPENDED'
+)
+
+RETURN L_STATUS

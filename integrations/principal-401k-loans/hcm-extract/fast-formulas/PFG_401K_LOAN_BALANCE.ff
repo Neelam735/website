@@ -1,0 +1,59 @@
+/******************************************************************************
+ * PFG_401K_LOAN_BALANCE
+ *
+ * Type          : Extract Rule
+ * Attached to   : Data group "Loan", attribute "Outstanding Balance"
+ * Returns       : L_BALANCE, a number with two decimal places
+ *
+ * Fusion HCM does not model a 401(k) loan. It models a deduction that happens
+ * to repay one. There is no balance to read, so it is derived:
+ *
+ *     outstanding = original principal - everything repaid to date
+ *
+ * The original principal lives on the element entry's developer flexfield,
+ * populated when the loan is set up from Principal's origination advice. The
+ * repaid-to-date figure comes from an inception-to-date balance dimension on
+ * the loan repayment element.
+ *
+ * Interest is not modelled and is not sent. Principal amortises the loan from
+ * the origination terms they hold; what they need from us is what was
+ * withheld, not our opinion of what is left after interest. Sending a balance
+ * that includes our own interest calculation would give them two numbers that
+ * disagree, and theirs is the authoritative one. The balance here is a
+ * principal-basis figure and Principal treats it as a cross-check, which is
+ * why a mismatch shows up in their monthly exception report rather than
+ * failing the file.
+ *
+ * The ITD dimension must be inception-to-date on the *element entry*, not the
+ * assignment: a participant with two concurrent loans has two entries against
+ * the same element, and an assignment-level balance would report the sum of
+ * both against each of them. That is the single most likely way to get this
+ * formula wrong, and it does not look wrong until somebody has two loans.
+ *****************************************************************************/
+
+DEFAULT FOR X_401K_LOAN_ORIGINAL_AMOUNT IS 0
+DEFAULT FOR X_401K_LOAN_REPAYMENT_EE_ITD IS 0
+
+L_ORIGINAL = X_401K_LOAN_ORIGINAL_AMOUNT
+L_REPAID   = X_401K_LOAN_REPAYMENT_EE_ITD
+
+IF L_ORIGINAL = 0 THEN
+(
+  /* No principal on the DFF. Reporting zero would tell Principal the loan is
+     settled and close it. Reporting a negative marks the row as unusable, the
+     canonical map's AMOUNT_OVERFLOW check does not catch it, and it would
+     reach Principal - so the loan number check does the work instead: an
+     entry set up without its principal was almost certainly set up without
+     its loan number too, and that is a visible reject.
+
+     Where a principal is genuinely missing but the loan number is present,
+     this returns zero and the row goes out with a zero balance. Documented in
+     docs/field-mapping.md; the fix is data, not formula. */
+  L_BALANCE = 0
+)
+ELSE
+(
+  L_BALANCE = L_ORIGINAL - L_REPAID
+)
+
+RETURN L_BALANCE

@@ -1,0 +1,666 @@
+{
+  "$comment": [
+    "Orchestration flow for PRINCIPAL_401K_LOANS. Every action, its",
+    "configuration, and its wiring, in the order the flow executes them. This",
+    "is the authoritative description of the integration: the OIC designer",
+    "canvas should match it action for action, and a reviewer should be able",
+    "to read this file instead of clicking through the canvas."
+  ],
+
+  "integration": {
+    "code": "PRINCIPAL_401K_LOANS",
+    "version": "01.00.0000",
+    "name": "Principal 401(k) Loans - Outbound File",
+    "description": "Submits the Principal 401(k) loans HCM Extract, polls the ESS request to completion, retrieves the extract XML from UCM, formats it into the Principal fixed-width loan repayment file, optionally PGP-encrypts it, delivers it to Principal's SFTP with a temp-then-rename handshake, archives a copy to UCM and reports the outcome.",
+    "style": "SCHEDULED_ORCHESTRATION",
+    "tracking": [
+      { "field": "runId", "primary": true },
+      { "field": "requestId", "primary": false },
+      { "field": "targetFileName", "primary": false }
+    ]
+  },
+
+  "$comment_params": [
+    "Integration properties. Changing an environment means editing these in",
+    "the OIC console (Integration -> Actions -> Update Property Values), not",
+    "rebuilding the .iar. Values that are data rather than environment - loan",
+    "type codes, contract numbers - are lookups instead, listed below."
+  ],
+  "scheduleParameters": [
+    { "name": "runDate",               "default": "",                             "description": "Extract effective date, YYYY-MM-DD. Blank means today." },
+    { "name": "extractName",           "default": "Principal 401K Loans Outbound", "description": "HCM Extract definition name, as it appears in Data Exchange." },
+    { "name": "reprocessFlag",         "default": "N",                            "description": "Y reuses the last successful extract output instead of submitting a new one." },
+    { "name": "payrollName",           "default": "US Semi-Monthly Payroll",      "description": "Payroll whose period the repayments were taken in." },
+    { "name": "legalEmployerName",     "default": "",                             "description": "Comma-separated legal employers, or blank for all mapped ones." },
+    { "name": "changesOnly",           "default": "N",                            "description": "Y sends only loans whose repayment changed since the last run." },
+    { "name": "pollIntervalSeconds",   "default": "30",                           "description": "First delay between ESS status checks." },
+    { "name": "pollBackoffFactor",     "default": "2",                            "description": "Multiplier applied to the delay after each check." },
+    { "name": "pollMaxIntervalSeconds", "default": "300",                         "description": "Ceiling on the backed-off delay." },
+    { "name": "maxPollAttempts",       "default": "40",                           "description": "Ceiling on status checks; ~3h under the default backoff." },
+    { "name": "ucmAccount",            "default": "hcm$/dataloader$/export$",     "description": "UCM security account the extract delivers into." },
+    { "name": "ucmTitlePrefix",        "default": "PFG_401K_LOANS",               "description": "Document title prefix the extract writes; step 60 searches on it." },
+    { "name": "ucmArchiveAccount",     "default": "hcm$/dataloader$/export$",     "description": "UCM account the delivered file is archived into." },
+    { "name": "remoteDirectory",       "default": "/inbound/401k/loans",          "description": "Principal's inbound directory." },
+    { "name": "tempSuffix",            "default": ".tmp",                         "description": "Suffix the file is written under before the rename." },
+    { "name": "triggerFileEnabled",    "default": "N",                            "description": "Y writes a zero-byte trigger file after the rename." },
+    { "name": "triggerFileSuffix",     "default": ".done",                        "description": "Suffix of the trigger file." },
+    { "name": "archiveDirectory",      "default": "/outbound/401k/archive",       "description": "SFTP directory the run summary is written to." },
+    { "name": "pgpEncryptionEnabled",  "default": "Y",                            "description": "Y encrypts with Principal's public key before delivery." },
+    { "name": "pgpPublicKeyAlias",     "default": "PRINCIPAL_PGP_PUBLIC",         "description": "Alias of Principal's public key in the OIC certificate store." },
+    { "name": "pgpArmored",            "default": "N",                            "description": "Y produces ASCII-armored output. Principal's profile says binary." },
+    { "name": "testProductionFlag",    "default": "T",                            "description": "T or P. Set P only in the production environment." },
+    { "name": "senderId",              "default": "ACMECORP",                     "description": "Sender identifier agreed with Principal, header positions 53-62." },
+    { "name": "fileVersion",           "default": "001",                          "description": "Layout version, header positions 50-52." },
+    { "name": "zeroRecordPolicy",      "default": "SEND_EMPTY",                   "description": "SEND_EMPTY or SKIP_SEND when there are no loans." },
+    { "name": "ssnPolicy",             "default": "FULL",                         "description": "FULL or MASKED. MASKED is non-production only." },
+    { "name": "environmentName",       "default": "DEV",                          "description": "Prefixes the notification subject." },
+    { "name": "notifyTo",              "default": "hcm-integrations@example.com",  "description": "Technical notification recipients." },
+    { "name": "notifyBusinessTo",      "default": "benefits-ops@example.com",     "description": "Business-fault recipients; copied on rejects." }
+  ],
+
+  "connections": [
+    { "ref": "HCM_PRINCIPAL_401K",  "role": "invoke" },
+    { "ref": "SFTP_PRINCIPAL_401K", "role": "invoke" },
+    { "ref": "SMTP_NOTIFY",         "role": "invoke" }
+  ],
+
+  "lookups": [
+    { "ref": "PFG_401K_LOAN_TYPE",   "usedBy": "100_map_to_canonical" },
+    { "ref": "PFG_401K_LOAN_STATUS", "usedBy": "100_map_to_canonical" },
+    { "ref": "PFG_401K_CONTRACT",    "usedBy": "100_map_to_canonical" },
+    { "ref": "PFG_401K_SOURCE_CODE", "usedBy": "100_map_to_canonical" }
+  ],
+
+  "flow": [
+    {
+      "id": "10_schedule",
+      "type": "TRIGGER",
+      "action": "Schedule",
+      "$comment": "Weekly, Monday 05:00 instance time. The window is after the semi-monthly payroll confirm and inside Principal's stated collection hours.",
+      "config": { "frequency": "WEEKLY", "daysOfWeek": "MON", "time": "05:00" }
+    },
+    {
+      "id": "20_assign_run_context",
+      "type": "ASSIGN",
+      "$comment": "runId is stamped on every artifact this run produces - the staged file, the archive, the summary, the tracking field - so a run can be traced from the notification back to the UCM document without a timestamp search. effectiveDate resolves the blank runDate default once, here, rather than in four places downstream.",
+      "assignments": {
+        "runId": "concat('PFG401K-', fn:format-dateTime(fn:current-dateTime(), '[Y0001][M01][D01]-[H01][m01][s01]'))",
+        "runStartTime": "fn:current-dateTime()",
+        "effectiveDate": "if ($runDate != '') then $runDate else fn:format-date(fn:current-date(), '[Y0001]-[M01]-[D01]')",
+        "pollAttempt": "0",
+        "currentPollInterval": "$pollIntervalSeconds",
+        "essStatus": "''",
+        "requestId": "''",
+        "reprocessed": "'false'",
+        "encrypted": "'false'",
+        "tempDelivered": "'false'",
+        "extractedLoans": "0",
+        "rejectedLoans": "0"
+      }
+    },
+    {
+      "id": "30_submit_extract",
+      "type": "SWITCH",
+      "$comment": "reprocessFlag=Y is the recovery path: the extract succeeded, delivery did not, and asking HCM to recompute a payroll period it has already reported on risks a different answer if anything was corrected in between. Reusing the output it already produced is what makes a retry safe.",
+      "branches": [
+        {
+          "name": "reprocess",
+          "condition": "$reprocessFlag = 'Y'",
+          "actions": [
+            {
+              "id": "32_reprocess_existing",
+              "type": "ASSIGN",
+              "$comment": "Skip straight to the UCM search. essStatus is set to SUCCEEDED so the poll loop below does not execute.",
+              "assignments": {
+                "essStatus": "'SUCCEEDED'",
+                "reprocessed": "'true'"
+              }
+            }
+          ]
+        },
+        {
+          "name": "otherwise",
+          "actions": [
+            {
+              "id": "31_submit_ess_job",
+              "type": "INVOKE",
+              "connection": "HCM_PRINCIPAL_401K",
+              "operation": "submitESSJobRequest",
+              "$comment": "ExtractFlowService via the HCM adapter's ERP Integration Service. The job package and definition are Oracle's fixed values for a payroll-interface extract flow; only the parameter list changes per extract. Parameters are positional, comma-separated, in the order the extract's flow declares them - reordering them silently produces an extract for the wrong period rather than an error.",
+              "config": {
+                "jobPackageName": "/oracle/apps/ess/hcm/payrollInterface/",
+                "jobDefinitionName": "RunPayrollInterfaceExtract",
+                "parameterList": "concat($extractName, ',', $effectiveDate, ',', $payrollName, ',', $legalEmployerName, ',', $changesOnly)"
+              },
+              "assignTo": { "requestId": "$SubmitResponse/result" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "40_poll_ess_status",
+      "type": "WHILE",
+      "$comment": "The extract is asynchronous; submitESSJobRequest returns a request id, not a file. Backoff rather than a fixed interval: a 200-row extract finishes in under a minute and a 40,000-row one takes an hour, and a fixed 30s interval either hammers the pod for an hour or waits five minutes for a run that finished in twenty seconds.",
+      "condition": "$pollAttempt < $maxPollAttempts and $essStatus != 'SUCCEEDED' and $essStatus != 'ERROR' and $essStatus != 'WARNING' and $essStatus != 'CANCELLED'",
+      "body": [
+        {
+          "id": "41_wait",
+          "type": "WAIT",
+          "config": { "seconds": "$currentPollInterval" }
+        },
+        {
+          "id": "42_get_ess_status",
+          "type": "INVOKE",
+          "connection": "HCM_PRINCIPAL_401K",
+          "operation": "getESSJobStatus",
+          "config": { "requestId": "$requestId" },
+          "assignTo": { "essStatus": "$StatusResponse/result" }
+        },
+        {
+          "id": "43_backoff",
+          "type": "ASSIGN",
+          "assignments": {
+            "pollAttempt": "$pollAttempt + 1",
+            "currentPollInterval": "min($currentPollInterval * $pollBackoffFactor, $pollMaxIntervalSeconds)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "50_extract_outcome",
+      "type": "SWITCH",
+      "$comment": "Three outcomes need to stay distinct. ERROR/CANCELLED means HCM failed and a rerun is safe. Hitting the attempt ceiling means the extract may still be running, and resubmitting it while it runs produces two outputs for one period - so that path throws rather than retrying. WARNING means the extract completed with some records in error, which is a business problem: the file would be short by exactly the rows that errored.",
+      "branches": [
+        {
+          "name": "extractFailed",
+          "condition": "$essStatus = 'ERROR' or $essStatus = 'CANCELLED'",
+          "actions": [
+            {
+              "id": "51_throw_extract_failed",
+              "type": "THROW",
+              "fault": "ExtractFailedError",
+              "category": "BUSINESS",
+              "config": { "message": "concat('Extract request ', $requestId, ' finished with status ', $essStatus)" }
+            }
+          ]
+        },
+        {
+          "name": "extractWarning",
+          "condition": "$essStatus = 'WARNING'",
+          "actions": [
+            {
+              "id": "52_throw_extract_warning",
+              "type": "THROW",
+              "fault": "ExtractFailedError",
+              "category": "BUSINESS",
+              "config": { "message": "concat('Extract request ', $requestId, ' completed with warnings; review the process results in HCM before delivering a possibly short file.')" }
+            }
+          ]
+        },
+        {
+          "name": "timedOut",
+          "condition": "$pollAttempt >= $maxPollAttempts and $essStatus != 'SUCCEEDED'",
+          "actions": [
+            {
+              "id": "53_throw_timeout",
+              "type": "THROW",
+              "fault": "ExtractFailedError",
+              "category": "BUSINESS",
+              "config": { "message": "concat('Gave up waiting on extract request ', $requestId, ' after ', $pollAttempt, ' checks; last status ', $essStatus, '. It may still be running - check it in HCM before rerunning, and rerun with reprocessFlag=Y once it completes.')" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "60_search_ucm",
+      "type": "INVOKE",
+      "connection": "HCM_PRINCIPAL_401K",
+      "operation": "searchDocuments",
+      "$comment": "Search by title rather than trusting a document id: the submit response carries the ESS request id, not the UCM id, and the extract's delivery step chooses the id. Sorted newest first and taking one, so the reprocess path picks up the most recent output for the period without a second parameter.",
+      "config": {
+        "queryText": "concat('dDocTitle <starts> `', $ucmTitlePrefix, '_', translate($effectiveDate, '-', ''), '`')",
+        "securityGroup": "$ucmAccount",
+        "sortField": "dInDate",
+        "sortOrder": "Desc",
+        "resultCount": "1"
+      },
+      "assignTo": { "contentId": "$SearchResponse/SearchResults/Document[1]/dDocName" }
+    },
+    {
+      "id": "65_no_output_check",
+      "type": "SWITCH",
+      "$comment": "A SUCCEEDED extract that produced no UCM document means the extract's delivery option is misconfigured - a common first-run failure, and one that otherwise surfaces much later as an unhelpful base64 decode error.",
+      "branches": [
+        {
+          "name": "missing",
+          "condition": "$contentId = ''",
+          "actions": [
+            {
+              "id": "66_throw_missing_output",
+              "type": "THROW",
+              "fault": "ExtractFailedError",
+              "category": "BUSINESS",
+              "config": { "message": "concat('Extract request ', $requestId, ' succeeded but no UCM document titled ', $ucmTitlePrefix, '_', translate($effectiveDate, '-', ''), '* exists in account ', $ucmAccount, '. Check the extract delivery option.')" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "70_get_ucm_file",
+      "type": "INVOKE",
+      "connection": "HCM_PRINCIPAL_401K",
+      "operation": "getFile",
+      "$comment": "GenericSoapPort GET_FILE. Returns the extract output base64-encoded in the SOAP response.",
+      "config": { "contentId": "$contentId" },
+      "assignTo": { "encodedPayload": "$GetFileResponse/Document/Contents" }
+    },
+    {
+      "id": "80_decode_and_stage",
+      "type": "STAGE_FILE",
+      "operation": "Write File",
+      "$comment": "Base64-decode straight to a staged file rather than into a variable. A 40,000-loan extract is tens of megabytes of XML, and holding it as a string is how this runs out of heap in production having passed every test in DEV.",
+      "config": {
+        "fileName": "concat($runId, '_extract.xml')",
+        "directory": "concat('/pfg401k/', $runId)",
+        "encoding": "UTF-8",
+        "decodeBase64From": "$encodedPayload"
+      },
+      "assignTo": { "extractFileReference": "$WriteFileResponse/fileReference" }
+    },
+    {
+      "id": "90_read_extract",
+      "type": "STAGE_FILE",
+      "operation": "Read Entire File",
+      "$comment": "Read whole, not in segments. The trailer's control totals have to be computed across every detail row, so the batch has to be complete before the first line is formatted - segmenting would only move the accumulation into the flow and lose the single-map reconciliation.",
+      "config": {
+        "fileReference": "$extractFileReference",
+        "schema": "../schemas/loan-extract.xsd",
+        "schemaElement": "DATA_DS"
+      }
+    },
+    {
+      "id": "100_map_to_canonical",
+      "type": "MAP",
+      "map": "../maps/map_extract_to_canonical.xsl",
+      "$comment": "Flattens the extract hierarchy, resolves the four lookups, converts amounts to integer cents and dates to CCYYMMDD, applies the SSN policy, and computes the control totals. Everything that can reject a row happens here, so the formatting map has nothing left to decide.",
+      "params": {
+        "runId": "$runId",
+        "ssnPolicy": "$ssnPolicy",
+        "sourceCodeDefault": "lookupValue('PFG_401K_SOURCE_CODE', 'ORACLE_HCM', 'DEFAULT', 'PRINCIPAL', 'RG')"
+      },
+      "assignTo": {
+        "extractedLoans": "count($LoanBatch/Loan) + count($LoanBatch/Reject)",
+        "rejectedLoans": "count($LoanBatch/Reject)",
+        "contractNumber": "$LoanBatch/ContractNumber",
+        "payPeriodEndDate": "$LoanBatch/PayPeriodEndDate",
+        "checkDate": "$LoanBatch/CheckDate"
+      }
+    },
+    {
+      "id": "110_zero_record_check",
+      "type": "SWITCH",
+      "$comment": "A period with no loan repayments is a normal outcome, not an error. Which of the two things to do about it is Principal's onboarding profile's call, not ours - SEND_EMPTY lets them tell 'nothing to report' from 'the feed broke', SKIP_SEND is for profiles whose loader rejects a detail-less file.",
+      "branches": [
+        {
+          "name": "skipSend",
+          "condition": "count($LoanBatch/Loan) = 0 and $zeroRecordPolicy = 'SKIP_SEND'",
+          "actions": [
+            { "id": "111_set_skipped", "type": "ASSIGN", "assignments": { "deliveryStatus": "'NO_RECORDS_SKIPPED'" } }
+          ],
+          "goto": "220_build_summary"
+        },
+        { "name": "otherwise", "goto": "120_map_to_principal" }
+      ]
+    },
+    {
+      "id": "120_map_to_principal",
+      "type": "MAP",
+      "map": "../maps/map_canonical_to_principal.xsl",
+      "$comment": "The only place fixed-width positions exist. One header, one detail per loan, one trailer, every line padded to 200 characters. The reference implementation of this map is tools/generate_principal_file.py and tests/test_xslt_parity.py asserts the two produce identical bytes.",
+      "params": {
+        "contractNumber": "$contractNumber",
+        "senderId": "$senderId",
+        "fileVersion": "$fileVersion",
+        "testProductionFlag": "$testProductionFlag",
+        "fileCreationDate": "fn:format-date(fn:current-date(), '[Y0001][M01][D01]')",
+        "fileCreationTime": "fn:format-time(fn:current-time(), '[H01][m01][s01]')"
+      }
+    },
+    {
+      "id": "130_write_flat_file",
+      "type": "STAGE_FILE",
+      "operation": "Write File",
+      "$comment": "File name carries the contract number and the period, not just a timestamp: Principal supports several of our contracts and their operations team identifies a file by what is in the name.",
+      "config": {
+        "fileName": "concat('PFG_401K_LOAN_', $contractNumber, '_', $payPeriodEndDate, '_', fn:format-dateTime(fn:current-dateTime(), '[H01][m01][s01]'), '.txt')",
+        "directory": "concat('/pfg401k/', $runId)",
+        "schema": "../schemas/principal-loan-file.nxsd",
+        "schemaElement": "LoanFile",
+        "encoding": "US-ASCII",
+        "appendToFile": false
+      },
+      "assignTo": {
+        "flatFileReference": "$WriteFileResponse/fileReference",
+        "targetFileName": "$WriteFileResponse/fileName",
+        "fileSizeBytes": "$WriteFileResponse/fileSize"
+      }
+    },
+    {
+      "id": "135_read_back_file",
+      "type": "STAGE_FILE",
+      "operation": "Read Entire File",
+      "$comment": "Read the finished file back off disk, not out of the message that wrote it. Reading what was actually persisted is what makes the recount that follows an independent check rather than a restatement of the same in-memory tree.",
+      "config": {
+        "fileReference": "$flatFileReference",
+        "schema": "../schemas/principal-loan-file.nxsd",
+        "schemaElement": "LoanFile"
+      }
+    },
+    {
+      "id": "136_recount_file",
+      "type": "MAP",
+      "map": "../maps/map_file_to_reconciliation.xsl",
+      "$comment": "Counts the D records and parses the amounts back out of columns 79-90 and 103-114. Takes only the file - it is given no access to the canonical batch, on purpose, because a recount that consulted the thing it is checking would agree with it by construction.",
+      "assignTo": {
+        "FileCheck": "$Reconciliation/FileCheck"
+      }
+    },
+    {
+      "id": "140_reconcile",
+      "type": "SWITCH",
+      "$comment": "Compare the recount against what the trailer claims. This is the one check that catches a formatting bug rather than a data bug: the trailer's totals come from the canonical batch, the figures from step 136 are parsed back out of the delivered text, so a mis-positioned amount column disagrees with itself. RecordLengths catches the case totals cannot - damage in a name column sums correctly and only its record length gives it away. Delivering an unreconciled file is worse than delivering nothing: Principal posts it, and unwinding a wrong posting takes weeks.",
+      "branches": [
+        {
+          "name": "mismatch",
+          "condition": "$FileCheck/ActualDetailCount != $LoanBatch/Totals/DetailCount or $FileCheck/ActualRepaymentCents != $LoanBatch/Totals/TotalRepaymentCents or $FileCheck/ActualOutstandingCents != $LoanBatch/Totals/TotalOutstandingCents or $FileCheck/RecordLengths != '200'",
+          "actions": [
+            {
+              "id": "141_raise_reconciliation_fault",
+              "type": "THROW",
+              "fault": "ReconciliationError",
+              "category": "BUSINESS",
+              "config": { "message": "concat('Trailer claims ', $LoanBatch/Totals/DetailCount, ' rows totalling ', $LoanBatch/Totals/TotalRepaymentCents, ' cents; the formatted file contains ', $FileCheck/ActualDetailCount, ' rows totalling ', $FileCheck/ActualRepaymentCents, ' cents, at record lengths ', $FileCheck/RecordLengths, '. Nothing was delivered.')" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "150_encrypt",
+      "type": "SWITCH",
+      "$comment": "Encryption is a switch, not a hard-coded step, because the certification environment Principal gives you during onboarding usually takes cleartext while production never does. It is on by default so the unconfigured case fails loudly rather than shipping national identifiers in the clear.",
+      "branches": [
+        {
+          "name": "encrypt",
+          "condition": "$pgpEncryptionEnabled = 'Y'",
+          "actions": [
+            {
+              "id": "151_pgp_encrypt",
+              "type": "STAGE_FILE",
+              "operation": "Encrypt File",
+              "config": {
+                "fileReference": "$flatFileReference",
+                "algorithm": "PGP",
+                "keyAlias": "$pgpPublicKeyAlias",
+                "armored": "$pgpArmored"
+              },
+              "assignTo": {
+                "deliveryFileReference": "$EncryptResponse/fileReference",
+                "encrypted": "'true'"
+              }
+            }
+          ]
+        },
+        {
+          "name": "otherwise",
+          "actions": [
+            { "id": "152_deliver_cleartext", "type": "ASSIGN", "assignments": { "deliveryFileReference": "$flatFileReference" } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "160_duplicate_check",
+      "type": "INVOKE",
+      "connection": "SFTP_PRINCIPAL_401K",
+      "operation": "List Files",
+      "$comment": "Idempotency. A rerun after a delivery that succeeded but whose summary write failed would otherwise send the same period twice, and Principal posts both - every participant's loan repaid double. The file name embeds the contract and the period end date, so an existing file for the same contract and period means this period is already there.",
+      "config": {
+        "directory": "$remoteDirectory",
+        "fileNamePattern": "concat('PFG_401K_LOAN_', $contractNumber, '_', $payPeriodEndDate, '_*')"
+      }
+    },
+    {
+      "id": "170_already_delivered",
+      "type": "SWITCH",
+      "$comment": "Deliberately not a fault. A duplicate run is an operational hiccup, not a data problem; it should tell somebody and stop, not page anyone at 05:00.",
+      "branches": [
+        {
+          "name": "duplicate",
+          "condition": "count($ListFilesResponse/FileList/File) > 0",
+          "actions": [
+            { "id": "171_set_already_delivered", "type": "ASSIGN", "assignments": { "deliveryStatus": "'ALREADY_DELIVERED'" } }
+          ],
+          "goto": "220_build_summary"
+        },
+        { "name": "otherwise", "goto": "180_put_temp" }
+      ]
+    },
+    {
+      "id": "180_put_temp",
+      "type": "INVOKE",
+      "connection": "SFTP_PRINCIPAL_401K",
+      "operation": "Write File",
+      "$comment": "Written under a temporary name first. Principal's collector polls the directory on a timer; a file matching the real pattern is picked up the moment it appears, and without this it would collect the first few kilobytes of a still-uploading file and reject the truncated result. The rename in 190 is atomic on their end.",
+      "config": {
+        "fileReference": "$deliveryFileReference",
+        "directory": "$remoteDirectory",
+        "fileName": "concat($targetFileName, if ($encrypted = 'true') then '.pgp' else '', $tempSuffix)"
+      },
+      "assignTo": { "tempDelivered": "'true'" }
+    },
+    {
+      "id": "190_rename_to_final",
+      "type": "INVOKE",
+      "connection": "SFTP_PRINCIPAL_401K",
+      "operation": "Move File",
+      "config": {
+        "sourceDirectory": "$remoteDirectory",
+        "sourceFileName": "concat($targetFileName, if ($encrypted = 'true') then '.pgp' else '', $tempSuffix)",
+        "targetDirectory": "$remoteDirectory",
+        "targetFileName": "concat($targetFileName, if ($encrypted = 'true') then '.pgp' else '')"
+      },
+      "assignTo": {
+        "deliveryStatus": "if ($rejectedLoans > 0) then 'DELIVERED_WITH_REJECTS' else 'DELIVERED'",
+        "tempDelivered": "'false'"
+      }
+    },
+    {
+      "id": "200_write_trigger_file",
+      "type": "SWITCH",
+      "$comment": "Some Principal profiles poll for a trigger file instead of the data file; the two conventions are mutually exclusive and which one applies is stated in the onboarding profile. Off by default because writing an unexpected trigger file into their directory generates a support ticket at their end.",
+      "branches": [
+        {
+          "name": "trigger",
+          "condition": "$triggerFileEnabled = 'Y'",
+          "actions": [
+            {
+              "id": "201_put_trigger",
+              "type": "INVOKE",
+              "connection": "SFTP_PRINCIPAL_401K",
+              "operation": "Write File",
+              "config": {
+                "directory": "$remoteDirectory",
+                "fileName": "concat($targetFileName, $triggerFileSuffix)",
+                "content": "''"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "210_archive_to_ucm",
+      "type": "INVOKE",
+      "connection": "HCM_PRINCIPAL_401K",
+      "operation": "uploadFileToUCM",
+      "$comment": "The archive copy is the cleartext file, not the encrypted one: an encrypted archive is unreadable to us, since we hold Principal's public key and not their private one, and the first thing a dispute needs is the ability to read what we sent. UCM rather than SFTP because retention and access control are already governed there.",
+      "config": {
+        "fileReference": "$flatFileReference",
+        "fileName": "concat($runId, '_', $targetFileName)",
+        "documentAccount": "$ucmArchiveAccount",
+        "documentTitle": "concat('PFG_401K_LOANS_ARCHIVE_', $contractNumber, '_', $payPeriodEndDate)"
+      },
+      "assignTo": { "archiveFileName": "concat($runId, '_', $targetFileName)" }
+    },
+    {
+      "id": "220_build_summary",
+      "type": "MAP",
+      "map": "../maps/map_status_to_summary.xsl",
+      "params": {
+        "runId": "$runId",
+        "environmentName": "$environmentName",
+        "runStartTime": "$runStartTime",
+        "runEndTime": "fn:current-dateTime()",
+        "extractName": "$extractName",
+        "requestId": "$requestId",
+        "contentId": "$contentId",
+        "reprocessed": "$reprocessed",
+        "targetFileName": "$targetFileName",
+        "archiveFileName": "$archiveFileName",
+        "encrypted": "$encrypted",
+        "fileSizeBytes": "$fileSizeBytes",
+        "deliveryStatus": "$deliveryStatus",
+        "extractedLoans": "$extractedLoans",
+        "actualDetailCount": "$FileCheck/ActualDetailCount",
+        "actualRepaymentCents": "$FileCheck/ActualRepaymentCents",
+        "actualOutstandingCents": "$FileCheck/ActualOutstandingCents"
+      }
+    },
+    {
+      "id": "230_write_summary",
+      "type": "INVOKE",
+      "connection": "SFTP_PRINCIPAL_401K",
+      "operation": "Write File",
+      "$comment": "The durable audit record, and the only artifact that survives a container restart. The email can be missed or filtered; this cannot. Written to our archive directory, not Principal's inbound one.",
+      "config": {
+        "directory": "$archiveDirectory",
+        "fileName": "concat($runId, '_summary.xml')"
+      }
+    },
+    {
+      "id": "240_notify",
+      "type": "INVOKE",
+      "connection": "SMTP_NOTIFY",
+      "operation": "Send Email",
+      "$comment": "Rejects put the benefits team on the recipient list: an unmapped loan type or a missing loan number is theirs to fix in HCM, and routing it to IT only adds a day.",
+      "config": {
+        "to": "if ($rejectedLoans > 0) then concat($notifyTo, ',', $notifyBusinessTo) else $notifyTo",
+        "subject": "$Notification/Subject",
+        "body": "$Notification/Body"
+      },
+      "mappedFrom": {
+        "map": "../maps/map_summary_to_notification.xsl",
+        "params": { "environmentName": "$environmentName" }
+      }
+    }
+  ],
+
+  "faultHandlers": [
+    {
+      "scope": "GLOBAL",
+      "$comment": [
+        "One global handler, not per-step handlers. There is exactly one file",
+        "in flight, so there is nothing to continue to: every fault ends the",
+        "run. What differs between faults is who hears about it and whether a",
+        "rerun is safe, which is what the classification in F1 records.",
+        "",
+        "Business faults (reconciliation, unmapped data, extract errors) go to",
+        "the benefits team; the fix is in HCM and a rerun after the fix is",
+        "safe. Technical faults (connectivity, API, runtime) go to",
+        "integrations; the fix is in the platform and the run may need",
+        "reprocessFlag=Y so HCM is not asked to recompute a reported period.",
+        "",
+        "The handler rethrows. Suppressing would leave a green instance in the",
+        "monitor for a run that delivered nothing, and the weekly check is the",
+        "monitor."
+      ],
+      "on": [
+        { "fault": "ReconciliationError", "category": "BUSINESS" },
+        { "fault": "MappingError",        "category": "BUSINESS" },
+        { "fault": "ExtractFailedError",  "category": "BUSINESS" },
+        { "fault": "APIInvocationError",  "category": "TECHNICAL" },
+        { "fault": "RuntimeFault",        "category": "TECHNICAL" },
+        { "fault": "ConnectivityError",   "category": "TECHNICAL" }
+      ],
+      "actions": [
+        {
+          "id": "F1_classify_fault",
+          "type": "ASSIGN",
+          "$comment": "faultCategory drives the recipient list and the subject line; reprocessSafe tells whoever picks it up whether to rerun with reprocessFlag=Y. Neither is derivable from the fault name alone once it reaches an inbox, which is why it is recorded here rather than reasoned about at 05:00.",
+          "assignments": {
+            "deliveryStatus": "'FAILED'",
+            "faultCategory": "if ($fault/type = 'ReconciliationError' or $fault/type = 'MappingError' or $fault/type = 'ExtractFailedError') then 'BUSINESS' else 'TECHNICAL'",
+            "faultMessage": "$fault/message",
+            "reprocessSafe": "if ($contentId != '') then 'true' else 'false'",
+            "runEndTime": "fn:current-dateTime()"
+          }
+        },
+        {
+          "id": "F2_cleanup_partial_delivery",
+          "type": "SWITCH",
+          "$comment": "A fault between the temp put and the rename leaves a .tmp file in Principal's directory. It will not be collected - it does not match their pattern - but it accumulates, and after a few months somebody at Principal asks about it. Removing it here keeps the failure invisible to them.",
+          "branches": [
+            {
+              "name": "tempLeftBehind",
+              "condition": "$tempDelivered = 'true'",
+              "actions": [
+                {
+                  "id": "F3_delete_temp_file",
+                  "type": "INVOKE",
+                  "connection": "SFTP_PRINCIPAL_401K",
+                  "operation": "Delete File",
+                  "config": {
+                    "directory": "$remoteDirectory",
+                    "fileName": "concat($targetFileName, if ($encrypted = 'true') then '.pgp' else '', $tempSuffix)"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "F4_write_failure_summary",
+          "type": "INVOKE",
+          "connection": "SFTP_PRINCIPAL_401K",
+          "operation": "Write File",
+          "$comment": "Same summary schema as the success path, so one parser reads both and a failed run is not a gap in the audit trail.",
+          "config": {
+            "directory": "$archiveDirectory",
+            "fileName": "concat($runId, '_FAILED.xml')"
+          },
+          "mappedFrom": { "map": "../maps/map_status_to_summary.xsl" }
+        },
+        {
+          "id": "F5_notify_failure",
+          "type": "INVOKE",
+          "connection": "SMTP_NOTIFY",
+          "operation": "Send Email",
+          "config": {
+            "to": "if ($faultCategory = 'BUSINESS') then concat($notifyBusinessTo, ',', $notifyTo) else $notifyTo",
+            "subject": "$Notification/Subject",
+            "body": "$Notification/Body"
+          },
+          "mappedFrom": {
+            "map": "../maps/map_summary_to_notification.xsl",
+            "params": { "environmentName": "$environmentName" }
+          }
+        },
+        { "id": "F6_rethrow", "type": "RETHROW", "scope": "FAIL_INSTANCE" }
+      ]
+    }
+  ]
+}

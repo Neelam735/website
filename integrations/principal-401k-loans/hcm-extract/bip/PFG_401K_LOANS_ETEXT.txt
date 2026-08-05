@@ -1,0 +1,199 @@
+Principal 401(k) Loans — BI Publisher eText template
+=====================================================
+
+This is the content of `PFG_401K_LOANS_ETEXT.rtf`, written out as text.
+
+An eText template is an RTF document made of tables, and RTF is not something
+a reviewer can read or a test suite can assert against. What follows is every
+table in that document, cell for cell, so that the layout can be reviewed here
+and the RTF rebuilt from it. To produce the RTF: open Word, create one table
+per section below with the same number of columns, in the same order, and save
+as `.rtf`. Column *widths* and fonts are irrelevant to eText — only the cell
+contents and the column order are read.
+
+**This template is the fallback, not the delivery path.** The extract's active
+delivery option writes XML to UCM and OIC formats the file; see the delivery
+section of `PRINCIPAL_401K_LOANS_EXTRACT.xml` for why. This template exists so
+that a file can be produced from HCM alone when OIC is unavailable — the
+procedure is in `docs/runbook.md` — and so that the layout has a second,
+independent statement of itself.
+
+If you change the layout, change it in three places or the parity test fails:
+this file, `map_canonical_to_principal.xsl`, and
+`tools/generate_principal_file.py`.
+
+---
+
+## Table 1 — Setup commands
+
+| Command                    | Value                |
+|----------------------------|----------------------|
+| `TEMPLATE TYPE`            | `FIXED_POSITION_BASED` |
+| `OUTPUT CHARACTER SET`     | `US-ASCII`           |
+| `NEW RECORD CHARACTER`     | `Carriage Return`    |
+| `INVALID CHARACTERS`       | `Replace`            |
+| `REPLACEMENT CHARACTER`    | `' '`                |
+
+`OUTPUT CHARACTER SET` is `US-ASCII` rather than UTF-8 deliberately. In a
+fixed-position layout a multi-byte character occupies more bytes than columns,
+which shifts every field after it on that record; one accented surname would
+corrupt the rest of that participant's row. `INVALID CHARACTERS = Replace`
+turns anything outside the set into a space rather than failing the run — the
+same trade the XSLT makes, and for the same reason: a character in a name must
+not cost somebody their loan repayment.
+
+`NEW RECORD CHARACTER` of `Carriage Return` emits CRLF. Principal's loader
+reads a bare LF as a truncated record and rejects the whole file.
+
+---
+
+## Table 2 — Header record
+
+Level `DATA_DS`, so it is emitted once for the file.
+
+| Command      | Value      |
+|--------------|------------|
+| `<LEVEL>`    | `DATA_DS`  |
+| `<NEW RECORD>` | `HEADER` |
+
+| Position | Length | Format  | Data                                              | Comments            |
+|----------|--------|---------|---------------------------------------------------|---------------------|
+| 1        | 1      | Alpha   | `'H'`                                             | Record type         |
+| 2        | 8      | Alpha   | `CONTRACT_NUMBER`                                 | See note below      |
+| 10       | 8      | Alpha   | `format_date(sysdate(),'yyyyMMdd')`               | File creation date  |
+| 18       | 6      | Alpha   | `format_date(sysdate(),'HHmmss')`                 | File creation time  |
+| 24       | 10     | Alpha   | `'LOANREPAY'`                                     | File type           |
+| 34       | 8      | Alpha   | `format_date(PERIOD_END_DATE,'yyyyMMdd')`         | Pay period end      |
+| 42       | 8      | Alpha   | `format_date(CHECK_DATE,'yyyyMMdd')`              | Check date          |
+| 50       | 3      | Alpha   | `'001'`                                           | File version        |
+| 53       | 10     | Alpha   | `SENDER_ID`                                       | Agreed with Principal |
+| 63       | 1      | Alpha   | `TEST_PROD_FLAG`                                  | `T` or `P`          |
+| 64       | 137    | Alpha   | `' '`                                             | Filler              |
+
+`CONTRACT_NUMBER`, `SENDER_ID` and `TEST_PROD_FLAG` are not in the extract
+data. On the OIC path they come from a lookup and two integration properties.
+On this fallback path they have to be supplied as report parameters, which is
+the template's real weakness: the contract number is a per-legal-employer
+mapping being supplied by hand, and a typo in it routes a file to another
+employer's plan. Check it against `PFG_401K_CONTRACT` before submitting, every
+time.
+
+---
+
+## Table 3 — Detail record
+
+Level `G_LOAN`, so it is emitted once per loan — a participant with two
+concurrent loans produces two records.
+
+| Command        | Value    |
+|----------------|----------|
+| `<LEVEL>`      | `G_LOAN` |
+| `<NEW RECORD>` | `DETAIL` |
+
+| Position | Length | Format  | Data                                                        | Comments               |
+|----------|--------|---------|-------------------------------------------------------------|------------------------|
+| 1        | 1      | Alpha   | `'D'`                                                       | Record type            |
+| 2        | 9      | Alpha   | `lpad(replace(replace(NATIONAL_ID,'-',''),' ',''),9,'0')`   | National identifier    |
+| 11       | 20     | Alpha   | `PERSON_NUMBER`                                             | Employee id            |
+| 31       | 20     | Alpha   | `upper(LAST_NAME)`                                          | Truncated at 20        |
+| 51       | 15     | Alpha   | `upper(FIRST_NAME)`                                         | Truncated at 15        |
+| 66       | 1      | Alpha   | `upper(substr(MIDDLE_NAMES,1,1))`                           | Middle initial         |
+| 67       | 10     | Alpha   | `LOAN_NUMBER`                                               | Principal's loan id    |
+| 77       | 2      | Alpha   | `LOAN_TYPE_CODE`                                            | See note below         |
+| 79       | 12     | Number  | `REPAYMENT_AMOUNT`                                          | Format mask below      |
+| 91       | 12     | Number  | `PAYOFF_AMOUNT`                                             | Format mask below      |
+| 103      | 12     | Number  | `OUTSTANDING_BALANCE`                                       | Format mask below      |
+| 115      | 8      | Alpha   | `format_date(PERIOD_END_DATE,'yyyyMMdd')`                   | Pay period end         |
+| 123      | 8      | Alpha   | `format_date(CHECK_DATE,'yyyyMMdd')`                        | Check date             |
+| 131      | 1      | Alpha   | `LOAN_STATUS_CODE`                                          | `A` `P` `D` `S`        |
+| 132      | 8      | Alpha   | `format_date(LOAN_ORIGINATION_DATE,'yyyyMMdd')`             | Origination            |
+| 140      | 8      | Alpha   | `format_date(LAST_PAYMENT_DATE,'yyyyMMdd')`                 | Blank if none          |
+| 148      | 2      | Alpha   | `SOURCE_CODE`                                               | Per payroll            |
+| 150      | 8      | Alpha   | `format_date(TERMINATION_DATE,'yyyyMMdd')`                  | Blank if none          |
+| 158      | 1      | Alpha   | `if TERMINATION_DATE != '' then 'Y' else 'N'`               | Termination indicator  |
+| 159      | 42     | Alpha   | `' '`                                                       | Filler                 |
+
+**Amount format mask.** Each of the three amount columns carries eleven digits
+of cents followed by one sign character:
+
+| Property        | Value             |
+|-----------------|-------------------|
+| `FORMAT`        | `Number`          |
+| `FORMAT MASK`   | `00000000000`     |
+| `MULTIPLY BY`   | `100`             |
+| `PAD`           | `Left, '0'`       |
+| `SIGN`          | `Trailing`        |
+| `POSITIVE SIGN` | `'+'`             |
+| `NEGATIVE SIGN` | `'-'`             |
+
+The sign is trailing so that every digit column stays in the same position
+whichever sign it carries, and it is present at all because a negative
+repayment is legitimate — a reversed or over-collected deduction is remitted
+back as one.
+
+`LOAN_TYPE_CODE`, `LOAN_STATUS_CODE` and `SOURCE_CODE` are lookups on the OIC
+path. Here they have to be expressed as nested `if` in the Data cell, one
+branch per mapping, e.g.
+
+```
+if ELEMENT_NAME = '401k Loan Repayment Residential' then '02'
+else if ELEMENT_NAME = '401k Loan Repayment Primary Residence' then '02'
+else '01'
+```
+
+That is a second, hand-maintained copy of `PFG_401K_LOAN_TYPE`, and it is the
+other reason this is the fallback and not the delivery path: adding a loan
+element means editing an RTF and re-uploading it, and an element nobody
+remembers to add silently becomes an `01`. On the OIC path the same case is a
+visible `UNMAPPED_LOAN_TYPE` reject.
+
+---
+
+## Table 4 — Trailer record
+
+Level `DATA_DS`, emitted once, after the details.
+
+| Command        | Value     |
+|----------------|-----------|
+| `<LEVEL>`      | `DATA_DS` |
+| `<NEW RECORD>` | `TRAILER` |
+
+| Position | Length | Format  | Data                                     | Comments              |
+|----------|--------|---------|------------------------------------------|-----------------------|
+| 1        | 1      | Alpha   | `'T'`                                    | Record type           |
+| 2        | 8      | Alpha   | `CONTRACT_NUMBER`                        | Same as header        |
+| 10       | 10     | Number  | `TOTAL_LOAN_COUNT`                       | Mask `0000000000`     |
+| 20       | 15     | Number  | `TOTAL_REPAYMENT`                        | 14 digits + sign      |
+| 35       | 15     | Number  | `TOTAL_PAYOFF`                           | 14 digits + sign      |
+| 50       | 15     | Number  | `TOTAL_OUTSTANDING`                      | 14 digits + sign      |
+| 65       | 8      | Alpha   | `format_date(sysdate(),'yyyyMMdd')`      | File creation date    |
+| 73       | 6      | Alpha   | `format_date(sysdate(),'HHmmss')`        | File creation time    |
+| 79       | 122    | Alpha   | `' '`                                    | Filler                |
+
+The three totals use the same amount mask as the detail columns but with
+`FORMAT MASK` of `00000000000000` — fourteen digits, not eleven.
+
+`TOTAL_LOAN_COUNT` and the three sums are the aggregate elements declared at
+the top level of `PFG_401K_LOANS_DM.xdm`. Declaring them inside
+`G_LEGAL_EMPLOYER` instead is the mistake to avoid: the trailer would then
+count one employer's loans and the file would fail Principal's own
+reconciliation on every multi-employer run.
+
+Note what this trailer *cannot* do. Its figures are computed by BI Publisher
+from the same in-memory data that produced the detail records, so they agree
+with the details by construction. A formatting fault in a detail row — an
+amount landing one column left — leaves the trailer perfectly consistent with
+a corrupt file. The OIC path re-parses the finished file and recounts it
+independently, which is the check that catches exactly that, and it is the
+main reason the eText route is the fallback.
+
+---
+
+## Sending a file built this way
+
+Because this path skips the OIC flow, it also skips the duplicate guard, the
+reconciliation, the PGP step and the temp-then-rename handshake. If you
+deliver a file produced here, do those four things by hand. `docs/runbook.md`
+has the procedure; the one that bites is the handshake — copying a file
+straight into Principal's inbound directory under its final name lets their
+poller collect it half-written.

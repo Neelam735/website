@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  HCM Extract definition: Principal 401K Loans Outbound.
+
+  This is the design of the extract, in the form the Data Exchange UI asks for
+  it, one screen per section below. It is not an importable artifact - HCM
+  Extracts are defined in the application, and the supported way to move one
+  between pods is the Data Exchange export/import of the extract definition
+  itself. What this file is for is review: the fields, filters and tag names
+  in one readable place, so a change to the extract and a change to the OIC
+  maps can be reviewed as one diff.
+
+  The tag names below are load-bearing. Each becomes an element name in the
+  XML the extract writes to UCM, and
+  resources/.../schemas/loan-extract.xsd describes that XML. Rename one here
+  without renaming it there and the integration produces a file with a header,
+  a trailer, and no participants - which reconciles, delivers, and is wrong.
+
+  Threading, chunking and every other performance setting is at the bottom,
+  with the reasoning.
+-->
+<extractDefinition xmlns="http://xmlns.oracle.com/apps/hcm/extracts">
+
+  <name>Principal 401K Loans Outbound</name>
+  <code>PFG_401K_LOANS_OUT</code>
+  <description>401(k) loan repayments withheld in the payroll period, for delivery to Principal Financial Group.</description>
+  <type>HR Archive Extract</type>
+  <legislativeDataGroup>US Legislative Data Group</legislativeDataGroup>
+  <consumerApplication>OIC</consumerApplication>
+
+  <!--
+    Full file, not changes-only, by default.
+
+    A loan repayment feed is a statement of what was withheld this period, not
+    a description of what changed. Principal posts every detail row against a
+    participant's loan balance; a changes-only file would omit a participant
+    whose deduction was identical to last period, and their loan would go
+    unpaid in Principal's records while payroll went on withholding from them.
+
+    The changes-only flag exists anyway, and is passed through as a parameter,
+    because the demographic corrections cycle during onboarding sometimes
+    needs it. It should be N in steady state, and docs/runbook.md says so.
+  -->
+  <changesOnly>N</changesOnly>
+  <supportsChangesOnly>Y</supportsChangesOnly>
+  <!-- The baseline changes-only compares against. Only meaningful when
+       changesOnly is Y. -->
+  <changesOnlyBasis>LAST_SUCCESSFUL_RUN</changesOnlyBasis>
+
+  <parameters>
+    <!-- Effective date drives every date-effective fetch in the extract.
+         OIC passes the run date; a rerun for an earlier period passes that
+         period's date and gets the data as it stood then. -->
+    <parameter name="Effective Date" dataType="DATE" required="Y"
+               tagName="EFFECTIVE_DATE"/>
+    <parameter name="Payroll" dataType="TEXT" required="Y"
+               tagName="PAYROLL_NAME"
+               lookup="Payroll Definition"/>
+    <!-- Blank means every legal employer the extract's data role can see.
+         Populated, it scopes the run to one contract's worth of employers,
+         which is what makes one-file-per-contract work. -->
+    <parameter name="Legal Employer" dataType="TEXT" required="N"
+               tagName="LEGAL_EMPLOYER_PARAM"/>
+    <parameter name="Process Changes Only" dataType="TEXT" required="N"
+               defaultValue="N" tagName="CHANGES_ONLY"/>
+    <!-- Derived, not entered: the period whose payroll run the repayments
+         were taken in, resolved from Payroll and Effective Date by
+         PFG_401K_PERIOD_DATES.ff so that a rerun cannot be pointed at a
+         period the amounts do not belong to. -->
+    <parameter name="Period End Date" dataType="DATE" required="N"
+               tagName="PERIOD_END_DATE"
+               fastFormula="PFG_401K_PERIOD_DATES"/>
+    <parameter name="Check Date" dataType="DATE" required="N"
+               tagName="CHECK_DATE"
+               fastFormula="PFG_401K_PERIOD_DATES"/>
+  </parameters>
+
+  <!--
+    Data groups, in hierarchy order. Each maps to one of the G_* elements in
+    loan-extract.xsd.
+  -->
+  <dataGroups>
+
+    <dataGroup name="Legal Employer" tagName="G_LEGAL_EMPLOYER"
+               userEntity="PER_EXT_SEC_LEGAL_EMPLOYER_UE"
+               sequence="10" threadControl="Y">
+      <description>One node per legal employer in scope. Also the threading boundary - see the performance section.</description>
+      <filterCriteria>
+        <!-- Restricting at the top of the hierarchy is what keeps the extract
+             from walking every worker in the pod before discarding them. -->
+        <criterion><![CDATA[
+          LEGAL_EMPLOYER_NAME = :LEGAL_EMPLOYER_PARAM
+          OR :LEGAL_EMPLOYER_PARAM IS NULL
+        ]]></criterion>
+      </filterCriteria>
+      <records>
+        <record name="Legal Employer Record" tagName="LEGAL_EMPLOYER_RECORD" sequence="10">
+          <attribute name="Legal Employer Name" tagName="LEGAL_EMPLOYER_NAME"
+                     dataType="TEXT" sequence="10"
+                     userEntity="PER_EXT_SEC_LEGAL_EMPLOYER_UE"
+                     sourceField="LEGAL_EMPLOYER_NAME"/>
+        </record>
+      </records>
+    </dataGroup>
+
+    <dataGroup name="Employee" tagName="G_EMPLOYEE"
+               userEntity="PER_EXT_SEC_PERSON_UE"
+               parentDataGroup="Legal Employer" sequence="20">
+      <description>One node per worker with at least one 401(k) loan repayment element entry in the period. Demographics only; the loan grain is below.</description>
+      <filterCriteria>
+        <!--
+          Deliberately NOT filtered on assignment status = ACTIVE.
+
+          A terminated worker with an outstanding loan is the single most
+          important record in this file: Principal needs the termination date
+          to start the 90-day cure period, and a worker terminated mid-period
+          still had a repayment withheld from their final cheque. Filtering
+          them out is the mistake that produces a defaulted loan nobody
+          intended.
+
+          The eligibility formula decides inclusion, and it includes a
+          terminated worker who either had a repayment this period or still
+          carries a balance.
+        -->
+        <criterion fastFormula="PFG_401K_LOAN_ELIGIBILITY"/>
+      </filterCriteria>
+      <records>
+        <record name="Person Details" tagName="PERSON_DETAILS" sequence="10">
+          <attribute name="Person Number" tagName="PERSON_NUMBER" dataType="TEXT"
+                     sequence="10" userEntity="PER_EXT_SEC_PERSON_UE"
+                     sourceField="PERSON_NUMBER"/>
+          <!-- Delivered in full. An extract cannot be re-run to recover a
+               value it did not emit, and the masking decision belongs to the
+               environment the file is built in, not to the extract. OIC's
+               ssnPolicy applies it. UCM's security account is what protects
+               the file at rest in the meantime. -->
+          <attribute name="National Identifier" tagName="NATIONAL_ID" dataType="TEXT"
+                     sequence="20" userEntity="PER_EXT_SEC_NATIONAL_ID_UE"
+                     sourceField="NATIONAL_IDENTIFIER_NUMBER"
+                     filter="NATIONAL_IDENTIFIER_TYPE = 'SSN' AND PRIMARY_FLAG = 'Y'"/>
+          <attribute name="Last Name" tagName="LAST_NAME" dataType="TEXT"
+                     sequence="30" userEntity="PER_EXT_SEC_PERSON_NAME_UE"
+                     sourceField="LAST_NAME"
+                     filter="NAME_TYPE = 'GLOBAL'"/>
+          <attribute name="First Name" tagName="FIRST_NAME" dataType="TEXT"
+                     sequence="40" userEntity="PER_EXT_SEC_PERSON_NAME_UE"
+                     sourceField="FIRST_NAME"
+                     filter="NAME_TYPE = 'GLOBAL'"/>
+          <attribute name="Middle Names" tagName="MIDDLE_NAMES" dataType="TEXT"
+                     sequence="50" userEntity="PER_EXT_SEC_PERSON_NAME_UE"
+                     sourceField="MIDDLE_NAMES"
+                     filter="NAME_TYPE = 'GLOBAL'"/>
+          <attribute name="Assignment Status" tagName="ASSIGNMENT_STATUS" dataType="TEXT"
+                     sequence="60" userEntity="PER_EXT_SEC_ASSIGNMENT_UE"
+                     sourceField="ASSIGNMENT_STATUS_TYPE"/>
+          <!-- Actual termination date of the primary work relationship.
+               Empty for an active worker. -->
+          <attribute name="Termination Date" tagName="TERMINATION_DATE" dataType="DATE"
+                     sequence="70" userEntity="PER_EXT_SEC_PERIOD_OF_SERVICE_UE"
+                     sourceField="ACTUAL_TERMINATION_DATE"/>
+        </record>
+      </records>
+    </dataGroup>
+
+    <dataGroup name="Loan" tagName="G_LOAN"
+               userEntity="PAY_EXT_SEC_ELEMENT_ENTRY_UE"
+               parentDataGroup="Employee" sequence="30">
+      <description>One node per 401(k) loan repayment element entry. This, not the employee, is the file's detail grain: a participant with two concurrent loans produces two rows.</description>
+      <filterCriteria>
+        <!--
+          Element classification rather than a list of element names: benefits
+          adds a loan element without anyone having to remember to change the
+          extract. The names still matter downstream - PFG_401K_LOAN_TYPE maps
+          them to Principal's loan type code - but an unmapped name there is a
+          visible reject, whereas an element missing from a hard-coded list
+          here would be an invisible omission.
+        -->
+        <criterion><![CDATA[
+          ELEMENT_CLASSIFICATION = 'Voluntary Deductions'
+          AND ELEMENT_NAME LIKE '401k Loan Repayment%'
+          AND EFFECTIVE_START_DATE <= :PERIOD_END_DATE
+          AND EFFECTIVE_END_DATE   >= :PERIOD_END_DATE
+        ]]></criterion>
+      </filterCriteria>
+      <records>
+        <record name="Loan Details" tagName="LOAN_DETAILS" sequence="10">
+          <attribute name="Element Name" tagName="ELEMENT_NAME" dataType="TEXT"
+                     sequence="10" userEntity="PAY_EXT_SEC_ELEMENT_ENTRY_UE"
+                     sourceField="ELEMENT_NAME"/>
+          <!-- Principal's loan identifier, held on the element entry's
+               developer flexfield. See docs/field-mapping.md for why this is
+               a DFF and what to do when it is empty. -->
+          <attribute name="Loan Number" tagName="LOAN_NUMBER" dataType="TEXT"
+                     sequence="20" userEntity="PAY_EXT_SEC_ELEMENT_ENTRY_UE"
+                     sourceField="EEV_ATTRIBUTE1"
+                     dffContext="PFG 401K Loan"/>
+          <attribute name="Loan Origination Date" tagName="LOAN_ORIGINATION_DATE" dataType="DATE"
+                     sequence="30" userEntity="PAY_EXT_SEC_ELEMENT_ENTRY_UE"
+                     sourceField="EEV_ATTRIBUTE2"
+                     dffContext="PFG 401K Loan"/>
+          <attribute name="Original Loan Amount" tagName="ORIGINAL_LOAN_AMOUNT" dataType="NUMBER"
+                     sequence="40" userEntity="PAY_EXT_SEC_ELEMENT_ENTRY_UE"
+                     sourceField="EEV_ATTRIBUTE3"
+                     dffContext="PFG 401K Loan"/>
+
+          <!-- Run result, not element entry value: what was actually withheld
+               in the confirmed payroll run. The entry value is what payroll
+               was asked to take; the run result is what it took, and they
+               differ whenever the deduction hit an arrearage rule, a partial
+               period or an insufficient-net cap. Principal posts what was
+               taken. -->
+          <attribute name="Repayment Amount" tagName="REPAYMENT_AMOUNT" dataType="NUMBER"
+                     sequence="50" userEntity="PAY_EXT_SEC_RUN_RESULT_UE"
+                     sourceField="RESULT_VALUE"
+                     filter="INPUT_VALUE_NAME = 'Pay Value' AND RUN_TYPE = 'Regular'"/>
+          <attribute name="Payoff Amount" tagName="PAYOFF_AMOUNT" dataType="NUMBER"
+                     sequence="60" fastFormula="PFG_401K_LOAN_PAYOFF"/>
+          <attribute name="Outstanding Balance" tagName="OUTSTANDING_BALANCE" dataType="NUMBER"
+                     sequence="70" fastFormula="PFG_401K_LOAN_BALANCE"/>
+          <attribute name="Last Payment Date" tagName="LAST_PAYMENT_DATE" dataType="DATE"
+                     sequence="80" userEntity="PAY_EXT_SEC_RUN_RESULT_UE"
+                     sourceField="PAYMENT_DATE"/>
+          <attribute name="Loan Status" tagName="LOAN_STATUS" dataType="TEXT"
+                     sequence="90" fastFormula="PFG_401K_LOAN_STATUS"/>
+          <attribute name="Payroll Name" tagName="PAYROLL_NAME" dataType="TEXT"
+                     sequence="100" userEntity="PAY_EXT_SEC_PAYROLL_UE"
+                     sourceField="PAYROLL_NAME"/>
+          <attribute name="Period End Date" tagName="PERIOD_END_DATE" dataType="DATE"
+                     sequence="110" userEntity="PAY_EXT_SEC_PAYROLL_PERIOD_UE"
+                     sourceField="END_DATE"/>
+          <attribute name="Check Date" tagName="CHECK_DATE" dataType="DATE"
+                     sequence="120" userEntity="PAY_EXT_SEC_PAYROLL_PERIOD_UE"
+                     sourceField="DIRECT_DEPOSIT_DATE"/>
+        </record>
+      </records>
+    </dataGroup>
+  </dataGroups>
+
+  <!--
+    Delivery.
+
+    XML to UCM, not a formatted file. The eText template in bip/ produces the
+    Principal layout directly and is kept working as a fallback, but it is not
+    the delivery option this integration uses. Three reasons, and they are the
+    deviation from the reference build most worth arguing with:
+
+    1. The trailer has to reconcile against the details. In OIC the formatted
+       file is parsed back and recounted independently of the totals that
+       built the trailer; inside BI Publisher the trailer is computed from the
+       same in-memory data as the details and agrees with them by
+       construction, so the check proves nothing.
+    2. PGP, the temp-then-rename handshake and the duplicate guard live in
+       OIC. A BIP-formatted file would still have to make that journey, so the
+       layout would be in one place and the delivery in another.
+    3. The layout is testable here. tools/generate_principal_file.py and the
+       XSLT are asserted byte-identical on every commit. An RTF template is
+       not something a test suite can hold.
+
+    The eText route stays for the case OIC is unavailable and somebody has to
+    produce a file from HCM by hand - see docs/runbook.md.
+  -->
+  <delivery>
+    <deliveryOption name="Principal 401K Loans XML to UCM">
+      <outputType>XML</outputType>
+      <deliveryType>UCM</deliveryType>
+      <ucmAccount>hcm$/dataloader$/export$</ucmAccount>
+      <!-- Read by the integration's UCM search at step 60. The date suffix is
+           what makes a rerun for an earlier period find that period's output
+           and not today's. -->
+      <documentTitlePrefix>PFG_401K_LOANS</documentTitlePrefix>
+      <outputFileName>PFG_401K_LOANS_${EFFECTIVE_DATE}.xml</outputFileName>
+      <encryptionMode>NONE</encryptionMode>
+      <dataModel>PFG_401K_LOANS_DM</dataModel>
+    </deliveryOption>
+
+    <!-- Disabled. Enable only for the manual fallback in docs/runbook.md, and
+         disable it again afterwards: two delivery options means two documents
+         in UCM and a search at step 60 that can pick the wrong one. -->
+    <deliveryOption name="Principal 401K Loans eText to UCM" enabled="false">
+      <outputType>eText</outputType>
+      <deliveryType>UCM</deliveryType>
+      <ucmAccount>hcm$/dataloader$/export$</ucmAccount>
+      <documentTitlePrefix>PFG_401K_LOANS_ETEXT</documentTitlePrefix>
+      <outputFileName>PFG_401K_LOAN_${EFFECTIVE_DATE}.txt</outputFileName>
+      <template>PFG_401K_LOANS_ETEXT</template>
+      <dataModel>PFG_401K_LOANS_DM</dataModel>
+    </deliveryOption>
+  </delivery>
+
+  <!--
+    Performance.
+
+    Numbers below are for a population of roughly 40,000 workers of whom
+    around 1,800 carry a loan. They are a starting point to be measured
+    against, not a law; docs/runbook.md says how to measure.
+  -->
+  <performance>
+    <!-- Threading splits on the top-level data group. Legal employer is the
+         right boundary because the groups are independent - no loan spans two
+         employers - and because it keeps a thread's working set to one
+         employer's workers. -->
+    <threadControlDataGroup>Legal Employer</threadControlDataGroup>
+    <threadCount>4</threadCount>
+    <!-- Workers per chunk. Small chunks spend their time in overhead; large
+         ones hold a lot of archived rows before committing, and a failure
+         part-way through re-does more work. 500 is the figure Oracle's
+         payroll interface tuning note lands on for a population this size. -->
+    <chunkSize>500</chunkSize>
+    <!-- The archive is what a rerun for an earlier period reads. Ninety days
+         covers a quarter-end reconciliation with Principal, which is the
+         longest lookback anybody has needed. -->
+    <archiveRetentionDays>90</archiveRetentionDays>
+    <!-- Baseline: full run ~12 minutes, changes-only ~4. The integration's
+         maxPollAttempts of 40 with backoff allows a little over three hours,
+         which is deliberately generous - a run that takes fifteen times the
+         baseline is a pod problem, and the file being late is better than the
+         file being resubmitted while the first one is still running. -->
+        <expectedRuntimeMinutes>12</expectedRuntimeMinutes>
+  </performance>
+
+  <!--
+    Security. The extract runs as the OIC integration user; these are the
+    privileges that user's roles must carry, and the ones most often missing.
+    A missing data-role grant does not fail the extract - it produces a
+    smaller file, silently.
+  -->
+  <security>
+    <requiredRole>Human Capital Management Integration Specialist</requiredRole>
+    <requiredRole>Payroll Interface Coordinator</requiredRole>
+    <requiredPrivilege>Run Payroll Interface Extract</requiredPrivilege>
+    <requiredPrivilege>Manage Payroll Element Entry</requiredPrivilege>
+    <requiredPrivilege>View Person National Identifier</requiredPrivilege>
+    <requiredPrivilege>Manage Extract Definition</requiredPrivilege>
+    <dataRole>Payroll data role covering every legal employer in PFG_401K_CONTRACT</dataRole>
+  </security>
+</extractDefinition>

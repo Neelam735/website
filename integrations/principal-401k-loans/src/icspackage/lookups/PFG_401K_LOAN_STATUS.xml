@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Derived HCM loan status -> Principal loan status code.
+
+  The left-hand values are produced by PFG_401K_LOAN_STATUS.ff, not read from
+  a delivered HCM field: HCM has no concept of a loan being in default, so the
+  status has to be derived from the balance, the element entry's end date and
+  the worker's assignment status. See hcm-extract/fast-formulas/.
+
+  Principal's codes:
+    A  Active - repayments continuing
+    P  Paid off - final repayment taken, balance zero
+    D  Defaulted - deduction stopped with a balance outstanding
+    S  Suspended - deduction paused, balance outstanding, expected to resume
+                   (unpaid leave, military leave)
+-->
+<lookup xmlns="http://xmlns.oracle.com/ics/lookup" name="PFG_401K_LOAN_STATUS">
+  <description>Maps the loan status derived by the extract fast formula to Principal's single-character status code.</description>
+  <adapters>
+    <adapter name="ORACLE_HCM"/>
+    <adapter name="PRINCIPAL"/>
+  </adapters>
+  <rows>
+    <row>
+      <column adapter="ORACLE_HCM">ACTIVE</column>
+      <column adapter="PRINCIPAL">A</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">PAID_OFF</column>
+      <column adapter="PRINCIPAL">P</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">DEFAULTED</column>
+      <column adapter="PRINCIPAL">D</column>
+    </row>
+    <row>
+      <column adapter="ORACLE_HCM">SUSPENDED</column>
+      <column adapter="PRINCIPAL">S</column>
+    </row>
+  </rows>
+</lookup>

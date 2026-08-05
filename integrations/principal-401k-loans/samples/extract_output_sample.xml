@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sample HCM Extract output, standing in for what the extract writes to UCM.
+
+  Every record here exists to exercise one case the file has to get right, and
+  the cases were chosen from what actually goes wrong with a loan feed rather
+  than from the happy path. docs/test-cases.md lists them with the expected
+  result; tests/ asserts them.
+
+    100501  ordinary active loan
+    100502  two concurrent loans - the reason the detail grain is the loan
+    100503  loan paid off this period
+    100504  terminated mid-period, final repayment taken
+    100505  refinance - old loan settled, new loan opened, same period
+    100506  suspended, unpaid leave, balance outstanding, nothing withheld
+    100507  negative repayment, a reversed deduction
+    100508  rehire with a loan carried across the break in service
+    100509  accented and over-long name, and an em dash
+    100510  REJECT - no loan number on the element entry
+    100511  REJECT - element name not in PFG_401K_LOAN_TYPE
+    100512  REJECT - no national identifier
+    100513  zero balance, final zero row telling Principal the loan closed
+    100514  REJECT - amount wider than the column
+    100515  REJECT - legal employer on a different contract
+-->
+<DATA_DS xmlns="http://xmlns.oracle.com/hcm/principal401k/extract">
+  <EXTRACT_NAME>Principal 401K Loans Outbound</EXTRACT_NAME>
+  <EFFECTIVE_DATE>2026-03-02</EFFECTIVE_DATE>
+  <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+  <PERIOD_END_DATE>2026-02-28</PERIOD_END_DATE>
+  <CHECK_DATE>2026-03-05</CHECK_DATE>
+  <CHANGES_ONLY>N</CHANGES_ONLY>
+
+  <G_LEGAL_EMPLOYER>
+    <LEGAL_EMPLOYER_NAME>ACME Corporation US</LEGAL_EMPLOYER_NAME>
+
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100501</PERSON_NUMBER>
+      <NATIONAL_ID>123-45-6789</NATIONAL_ID>
+      <LAST_NAME>Okafor</LAST_NAME>
+      <FIRST_NAME>Adaeze</FIRST_NAME>
+      <MIDDLE_NAMES>Chi</MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00012345</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2024-06-15</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>12000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>250.00</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>7250.00</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- Two loans, one participant. A general-purpose loan and a residential
+         one run concurrently under IRS rules, and they amortise separately -
+         which is why the file's grain is the loan, not the employee. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100502</PERSON_NUMBER>
+      <NATIONAL_ID>234567890</NATIONAL_ID>
+      <LAST_NAME>Ramirez</LAST_NAME>
+      <FIRST_NAME>Beatriz</FIRST_NAME>
+      <MIDDLE_NAMES>Elena</MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00022001</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-01-10</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>8000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>166.67</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>5333.30</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment Residential</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00022002</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2022-09-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>45000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>412.50</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>28875.00</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- Settled in full. Payoff and repayment carry the same amount: the
+         money moved once, and the payoff field says what the movement meant. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100503</PERSON_NUMBER>
+      <NATIONAL_ID>345-67-8901</NATIONAL_ID>
+      <LAST_NAME>Whitfield</LAST_NAME>
+      <FIRST_NAME>Marcus</FIRST_NAME>
+      <MIDDLE_NAMES></MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00030777</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2023-03-20</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>6000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>184.22</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>184.22</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>0.00</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>PAID_OFF</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- Terminated mid-period with a final repayment taken. Status is still
+         ACTIVE and the termination date is attached: that pairing is what
+         tells Principal to expect the loan to stop and from when. DEFAULTED
+         follows next period if nothing more arrives. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100504</PERSON_NUMBER>
+      <NATIONAL_ID>456789012</NATIONAL_ID>
+      <LAST_NAME>Nakamura</LAST_NAME>
+      <FIRST_NAME>Yuki</FIRST_NAME>
+      <MIDDLE_NAMES>T</MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>INACTIVE</ASSIGNMENT_STATUS>
+      <TERMINATION_DATE>2026-02-20</TERMINATION_DATE>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00041188</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-05-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>10000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>208.33</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>7916.71</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-02-20</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- Refinance. The old loan settles and the new one opens in the same
+         period, so both appear, with different loan numbers. Principal closes
+         one and opens the other; sending only the new one would leave the old
+         balance outstanding forever. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100505</PERSON_NUMBER>
+      <NATIONAL_ID>567890123</NATIONAL_ID>
+      <LAST_NAME>Bergstrom</LAST_NAME>
+      <FIRST_NAME>Anneli</FIRST_NAME>
+      <MIDDLE_NAMES>Karin</MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00050010</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2023-08-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>9000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>3120.55</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>3120.55</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>0.00</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>PAID_OFF</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00050011</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2026-02-15</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>15000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>312.50</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>14687.50</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- Unpaid leave: balance outstanding, nothing withheld. Reaches
+         Principal as a zero repayment with status S. Silence would look
+         identical to a broken feed. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100506</PERSON_NUMBER>
+      <NATIONAL_ID>678901234</NATIONAL_ID>
+      <LAST_NAME>Delacroix</LAST_NAME>
+      <FIRST_NAME>Pierre</FIRST_NAME>
+      <MIDDLE_NAMES>Luc</MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>SUSPENDED</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00060220</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-11-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>5000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>0.00</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>4166.70</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-01-20</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>SUSPENDED</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- A deduction reversed after an off-cycle correction. Negative, and
+         legitimately so: Principal nets it back. Also on a different payroll,
+         so it carries a different source code and its own period. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100507</PERSON_NUMBER>
+      <NATIONAL_ID>789012345</NATIONAL_ID>
+      <LAST_NAME>Osei</LAST_NAME>
+      <FIRST_NAME>Kwame</FIRST_NAME>
+      <MIDDLE_NAMES></MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00070440</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-02-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>7500.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>-156.25</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>5468.75</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-02-14</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Off-Cycle Payroll</PAYROLL_NAME>
+        <PERIOD_END_DATE>2026-02-14</PERIOD_END_DATE>
+        <CHECK_DATE>2026-02-18</CHECK_DATE>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- Rehire. The loan predates the break in service and carries across; a
+         new work relationship does not open a new loan. The origination date
+         is the giveaway - it is older than the current hire. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100508</PERSON_NUMBER>
+      <NATIONAL_ID>890123456</NATIONAL_ID>
+      <LAST_NAME>Petrov</LAST_NAME>
+      <FIRST_NAME>Milena</FIRST_NAME>
+      <MIDDLE_NAMES>A</MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00080550</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2024-01-15</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>4000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>83.33</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>1416.61</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- Accented characters, an em dash, and a surname longer than the
+         column. All three have to survive as something Principal's US-ASCII
+         loader accepts, without shifting a single column. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100509</PERSON_NUMBER>
+      <NATIONAL_ID>901234567</NATIONAL_ID>
+      <LAST_NAME>Fernández—Villalobos</LAST_NAME>
+      <FIRST_NAME>José Ángel</FIRST_NAME>
+      <MIDDLE_NAMES>Íñigo</MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00090660</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-07-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>20000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>416.67</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>16666.64</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- REJECT: element entry set up without Principal's loan number on its
+         DFF. Nothing downstream can invent one. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100510</PERSON_NUMBER>
+      <NATIONAL_ID>012345678</NATIONAL_ID>
+      <LAST_NAME>Achterberg</LAST_NAME>
+      <FIRST_NAME>Sander</FIRST_NAME>
+      <MIDDLE_NAMES></MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER></LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-09-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>3000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>125.00</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>2375.00</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- REJECT: a loan element nobody added to PFG_401K_LOAN_TYPE. Defaulting
+         it to 01 would misfile a residential loan against a general
+         amortisation schedule, and nobody would notice for a month. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100511</PERSON_NUMBER>
+      <NATIONAL_ID>102345678</NATIONAL_ID>
+      <LAST_NAME>Grimaldi</LAST_NAME>
+      <FIRST_NAME>Elena</FIRST_NAME>
+      <MIDDLE_NAMES></MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment Hardship</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00110880</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2026-01-05</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>2500.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>104.17</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>2291.66</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- REJECT: no national identifier. Principal matches participants on it
+         and has no other key; a row without one cannot post. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100512</PERSON_NUMBER>
+      <NATIONAL_ID></NATIONAL_ID>
+      <LAST_NAME>Bianchi</LAST_NAME>
+      <FIRST_NAME>Tomas</FIRST_NAME>
+      <MIDDLE_NAMES></MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00120990</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-04-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>6000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>125.00</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>3625.00</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- Zero everywhere: settled in a prior period, still employed. The final
+         zero-balance row is what tells Principal the loan closed rather than
+         the participant simply vanishing from the feed. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100513</PERSON_NUMBER>
+      <NATIONAL_ID>112345678</NATIONAL_ID>
+      <LAST_NAME>Novak</LAST_NAME>
+      <FIRST_NAME>Petra</FIRST_NAME>
+      <MIDDLE_NAMES></MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00131100</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2022-02-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>5000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>0.00</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>0.00</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-01-20</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>PAID_OFF</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+
+    <!-- REJECT: a balance wider than the eleven-digit column, from a data
+         entry slip on the DFF. Truncating would send $23,456,789.01 as
+         $3,456,789.01 and it would post. -->
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100514</PERSON_NUMBER>
+      <NATIONAL_ID>122345678</NATIONAL_ID>
+      <LAST_NAME>Ferreira</LAST_NAME>
+      <FIRST_NAME>Luis</FIRST_NAME>
+      <MIDDLE_NAMES></MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00141200</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-06-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>1234567890.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>200.00</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>1234567890.00</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+  </G_LEGAL_EMPLOYER>
+
+  <!-- REJECT: a second legal employer on a different Principal contract,
+       caught in the same run because the extract was submitted without a
+       legal employer parameter. One file carries one contract; these rows
+       belong in their own run. -->
+  <G_LEGAL_EMPLOYER>
+    <LEGAL_EMPLOYER_NAME>ACME Services LLC</LEGAL_EMPLOYER_NAME>
+    <G_EMPLOYEE>
+      <PERSON_NUMBER>100515</PERSON_NUMBER>
+      <NATIONAL_ID>132345678</NATIONAL_ID>
+      <LAST_NAME>Kowalski</LAST_NAME>
+      <FIRST_NAME>Ewa</FIRST_NAME>
+      <MIDDLE_NAMES></MIDDLE_NAMES>
+      <ASSIGNMENT_STATUS>ACTIVE</ASSIGNMENT_STATUS>
+      <G_LOAN>
+        <ELEMENT_NAME>401k Loan Repayment General</ELEMENT_NAME>
+        <LOAN_NUMBER>LN00151300</LOAN_NUMBER>
+        <LOAN_ORIGINATION_DATE>2025-10-01</LOAN_ORIGINATION_DATE>
+        <ORIGINAL_LOAN_AMOUNT>9000.00</ORIGINAL_LOAN_AMOUNT>
+        <REPAYMENT_AMOUNT>187.50</REPAYMENT_AMOUNT>
+        <PAYOFF_AMOUNT>0.00</PAYOFF_AMOUNT>
+        <OUTSTANDING_BALANCE>8062.50</OUTSTANDING_BALANCE>
+        <LAST_PAYMENT_DATE>2026-03-05</LAST_PAYMENT_DATE>
+        <LOAN_STATUS>ACTIVE</LOAN_STATUS>
+        <PAYROLL_NAME>US Semi-Monthly Payroll</PAYROLL_NAME>
+      </G_LOAN>
+    </G_EMPLOYEE>
+  </G_LEGAL_EMPLOYER>
+</DATA_DS>

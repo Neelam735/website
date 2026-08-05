@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Run summary. Written to the SFTP archive directory and used to build the
+  completion notification, so operations can answer "did Principal get this
+  period's loan repayments?" without opening the OIC monitor or asking
+  Principal.
+
+  It carries the reconciliation evidence - detail count and control totals as
+  the trailer states them, next to the same figures recounted from the
+  formatted detail rows - because "the file was delivered" and "the file was
+  right" are different questions and only one of them is answered by a
+  successful SFTP put.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tns="http://xmlns.oracle.com/hcm/principal401k/summary"
+            targetNamespace="http://xmlns.oracle.com/hcm/principal401k/summary"
+            elementFormDefault="qualified">
+
+  <xsd:element name="DeliverySummary">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="RunId" type="xsd:string"/>
+        <xsd:element name="EnvironmentName" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="RunStartTime" type="xsd:string"/>
+        <xsd:element name="RunEndTime" type="xsd:string" minOccurs="0"/>
+
+        <!-- Identifiers needed to trace the run back into HCM. -->
+        <xsd:element name="ExtractName" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="RequestId" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="ContentId" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="Reprocessed" type="xsd:string" minOccurs="0"/>
+
+        <xsd:element name="ContractNumber" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="PayPeriodEndDate" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="CheckDate" type="xsd:string" minOccurs="0"/>
+
+        <xsd:element name="TargetFileName" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="ArchiveFileName" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="Encrypted" type="xsd:string" minOccurs="0"/>
+        <xsd:element name="FileSizeBytes" type="xsd:long" minOccurs="0"/>
+
+        <!-- NOT_STARTED | EXTRACT_RUNNING | EXTRACT_FAILED | TIMED_OUT
+             | NO_RECORDS_SKIPPED | RECONCILIATION_FAILED
+             | ALREADY_DELIVERED | DELIVERED | DELIVERED_WITH_REJECTS
+             | FAILED -->
+        <xsd:element name="Status" type="xsd:string"/>
+        <xsd:element name="StatusDetail" type="xsd:string" minOccurs="0"/>
+        <!-- BUSINESS or TECHNICAL, on a failure. They go to different
+             recipients because they need different people. -->
+        <xsd:element name="FaultCategory" type="xsd:string" minOccurs="0"/>
+
+        <xsd:element name="Counts">
+          <xsd:complexType>
+            <xsd:sequence>
+              <!-- Loans the extract delivered, before any were rejected. -->
+              <xsd:element name="ExtractedLoans" type="xsd:int"/>
+              <xsd:element name="Rejected" type="xsd:int"/>
+              <!-- Detail rows the trailer claims. -->
+              <xsd:element name="TrailerDetailCount" type="xsd:int"/>
+              <!-- Detail rows actually counted in the formatted file. -->
+              <xsd:element name="ActualDetailCount" type="xsd:int"/>
+              <xsd:element name="TrailerRepaymentCents" type="xsd:long"/>
+              <xsd:element name="ActualRepaymentCents" type="xsd:long"/>
+              <xsd:element name="TrailerOutstandingCents" type="xsd:long"/>
+              <xsd:element name="ActualOutstandingCents" type="xsd:long"/>
+              <!-- true only when every pair above agrees. -->
+              <xsd:element name="Reconciled" type="xsd:string"/>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+
+        <xsd:element name="Reject" minOccurs="0" maxOccurs="unbounded">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="EmployeeId" type="xsd:string" minOccurs="0"/>
+              <xsd:element name="LoanNumber" type="xsd:string" minOccurs="0"/>
+              <xsd:element name="Reason" type="xsd:string"/>
+              <xsd:element name="Message" type="xsd:string"/>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>
