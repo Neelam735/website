@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Schedule definition. Daily at 02:00 in the instance timezone - deliberately
+  after the ATS nightly extract window closes.
+
+  The schedule is imported alongside the integration but must still be started
+  in the console; importing an archive does not start a schedule.
+-->
+<schedule xmlns="http://xmlns.oracle.com/ics/schedule">
+  <integrationCode>NEW_HIRE_LOAD</integrationCode>
+  <integrationVersion>01.00.0000</integrationVersion>
+  <name>NEW_HIRE_LOAD_SCHEDULE</name>
+  <description>Nightly new-hire load.</description>
+  <frequency>DAILY</frequency>
+  <startHour>2</startHour>
+  <startMinute>0</startMinute>
+  <timeZone>UTC</timeZone>
+  <enabled>false</enabled>
+</schedule>

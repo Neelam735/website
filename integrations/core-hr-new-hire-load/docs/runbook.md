@@ -5,7 +5,7 @@
 ```bash
 make build            # -> dist/NEW_HIRE_LOAD_01.00.0000.iar
 make validate         # structural checks before it touches an instance
-make test             # 73 tests: mapping, XSLT parity, status, packaging
+make test             # 81 tests: mapping, XSLT parity, status, packaging
 ```
 
 The build is reproducible: same commit, same bytes, same `sha256`. Record the
@@ -29,6 +29,22 @@ is what was reviewed.
    business units, jobs, grades, departments, locations, positions. HDL will
    reject an assignment whose `JobCode` does not resolve, and this is the most
    common cause of a first-run failure.
+
+## If the import fails with "path not found"
+
+The archive layout is version-specific and not fully published. Rather than
+guessing, take the layout from the instance itself:
+
+1. In the target instance, export any existing integration (any one will do).
+2. `python3 tools/compare_to_reference.py that_export.iar`
+3. The first section lists paths the instance's export has that ours does not.
+   Create them under `src/`, `make build`, re-import.
+
+The artifacts under `src/.../maps/` and `src/.../schemas/` are independent of
+the packaging. If the archive route stays blocked, build the flow in the OIC
+designer following `flow/NEW_HIRE_LOAD.flow.json` action by action — the XSLTs
+import directly into the mapper and the schemas upload as-is — then export the
+`.iar` from OIC. That route always works.
 
 ## Import into OIC
 

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Integration project model: identity, the connections it binds to, the
+  processors that hold its resources, and the activity sequence.
+
+  In OIC's model an activity refers to a processor, a processor refers to
+  resources (JCA, WSDL, XSD, XSL), and the orchestration section carries the
+  sequence. The activity list below mirrors flow/NEW_HIRE_LOAD.flow.json step
+  for step; the flow file carries the per-action configuration and the
+  reasoning, and is the one to read first.
+-->
+<project xmlns="http://xmlns.oracle.com/ics/project"
+         projectType="INTEGRATION">
+
+  <code>NEW_HIRE_LOAD</code>
+  <version>01.00.0000</version>
+  <name>Core HR - New Hire Load (HDL)</name>
+  <description>Reads an ATS new-hire extract from SFTP, builds HCM Data Loader Worker business object files, uploads them to UCM, runs the HDL import, polls to completion and reports the outcome.</description>
+  <pattern>SCHEDULED_ORCHESTRATION</pattern>
+  <status>CONFIGURED</status>
+
+  <!-- Resolved against the target instance during import; see
+       icspackage/appinstances/ for the descriptors. -->
+  <appinstanceReferences>
+    <appinstanceReference code="FTP_NEWHIRE_INBOUND" adapterType="ftp" role="INVOKE"/>
+    <appinstanceReference code="HCM_CORE_HR" adapterType="oraclehcmcloud" role="INVOKE"/>
+    <appinstanceReference code="SMTP_NOTIFY" adapterType="oraclecloudnotification" role="INVOKE"/>
+  </appinstanceReferences>
+
+  <processors>
+    <processor id="processor_10">
+      <resourcegroup id="resourcegroup_10">
+        <resource type="WSDL"   path="resources/processor_10/resourcegroup_10/wsdls/schedule-trigger.wsdl"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/newhire-csv.nxsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/hdl-dat-line.nxsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/newhire-canonical.xsd"/>
+        <resource type="SCHEMA" path="resources/processor_10/resourcegroup_10/schemas/load-summary.xsd"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_csv_to_canonical.xsl"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_canonical_to_hdl.xsl"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_status_to_summary.xsl"/>
+        <resource type="XSL"    path="resources/processor_10/resourcegroup_10/maps/map_summary_to_notification.xsl"/>
+        <resource type="FLOW"   path="resources/processor_10/resourcegroup_10/flow/NEW_HIRE_LOAD.flow.json"/>
+      </resourcegroup>
+    </processor>
+  </processors>
+
+  <orchestration>
+    <activities>
+      <activity id="10_schedule" type="TRIGGER" subtype="SCHEDULE"/>
+      <activity id="20_assign_run_context" type="ASSIGN"/>
+      <activity id="30_list_files" type="INVOKE" appinstance="FTP_NEWHIRE_INBOUND" operation="ListFiles"/>
+      <activity id="40_no_files_check" type="SWITCH"/>
+      <activity id="50_for_each_file" type="FOR_EACH">
+        <activities>
+          <activity id="51_read_segments" type="STAGE_FILE" operation="ReadFileInSegments">
+            <activities>
+              <activity id="52_map_to_canonical" type="MAP" processor="processor_10"/>
+              <activity id="53_accumulate" type="ASSIGN"/>
+            </activities>
+          </activity>
+          <activity id="60_write_dat_files" type="FOR_EACH">
+            <activities>
+              <activity id="61_map_to_hdl" type="MAP" processor="processor_10"/>
+              <activity id="62_skip_empty" type="SWITCH"/>
+              <activity id="63_write_dat" type="STAGE_FILE" operation="WriteFile"/>
+            </activities>
+          </activity>
+          <activity id="70_zip" type="STAGE_FILE" operation="ZipFiles"/>
+          <activity id="80_upload_and_import" type="INVOKE" appinstance="HCM_CORE_HR" operation="ImportBulkData"/>
+          <activity id="90_poll_status" type="WHILE">
+            <activities>
+              <activity id="91_wait" type="WAIT"/>
+              <activity id="92_get_status" type="INVOKE" appinstance="HCM_CORE_HR" operation="GetDataSetStatus"/>
+              <activity id="93_increment" type="ASSIGN"/>
+            </activities>
+          </activity>
+          <activity id="100_flag_timeout" type="SWITCH"/>
+          <activity id="110_fetch_errors" type="SWITCH">
+            <activities>
+              <activity id="111_get_error_report" type="INVOKE" appinstance="HCM_CORE_HR" operation="GetImportErrorReport"/>
+            </activities>
+          </activity>
+          <activity id="120_build_summary" type="MAP" processor="processor_10"/>
+          <activity id="130_write_summary" type="INVOKE" appinstance="FTP_NEWHIRE_INBOUND" operation="WriteFile"/>
+          <activity id="140_archive_source" type="INVOKE" appinstance="FTP_NEWHIRE_INBOUND" operation="MoveFile"/>
+          <activity id="150_notify" type="INVOKE" appinstance="SMTP_NOTIFY" operation="SendEmail"/>
+        </activities>
+      </activity>
+    </activities>
+
+    <!-- A failure on one extract must not abandon the others: record it, move
+         the file aside so the next run does not retry it forever, continue. -->
+    <faultHandlers>
+      <faultHandler scope="50_for_each_file">
+        <faults>
+          <fault name="APIInvocationError"/>
+          <fault name="RuntimeFault"/>
+          <fault name="ConnectivityError"/>
+        </faults>
+        <activities>
+          <activity id="F1_write_failure_summary" type="INVOKE" appinstance="FTP_NEWHIRE_INBOUND" operation="WriteFile"/>
+          <activity id="F2_move_to_reject" type="INVOKE" appinstance="FTP_NEWHIRE_INBOUND" operation="MoveFile"/>
+          <activity id="F3_notify_failure" type="INVOKE" appinstance="SMTP_NOTIFY" operation="SendEmail"/>
+          <activity id="F4_continue" type="RETHROW" scope="SUPPRESS_AND_CONTINUE"/>
+        </activities>
+      </faultHandler>
+    </faultHandlers>
+  </orchestration>
+
+  <tracking>
+    <trackingField name="batchId" primary="true"/>
+    <trackingField name="sourceFileName" primary="false"/>
+    <trackingField name="dataSetName" primary="false"/>
+  </tracking>
+</project>

@@ -39,6 +39,15 @@ def rewrite(original, tmp, *, drop=(), add=None, rename=None):
     return out
 
 
+# The paths OIC's importer resolves. Getting one of these wrong is what
+# produced "path not found" on the first attempt to import.
+REQUIRED_PATHS = [
+    "ics.json",
+    f"icspackage/project/{PROJECT}/PROJECT-INF/project.xml",
+    f"icspackage/project/{PROJECT}/ics_project_attributes.properties",
+]
+
+
 class TestBuild(unittest.TestCase):
 
     def test_archive_is_a_valid_zip_with_the_expected_name(self):
@@ -47,18 +56,52 @@ class TestBuild(unittest.TestCase):
             self.assertEqual(os.path.basename(path), f"{PROJECT}.iar")
             self.assertTrue(zipfile.is_zipfile(path))
 
-    def test_manifest_is_the_first_entry(self):
+    def test_layout_matches_what_the_importer_resolves(self):
         with TemporaryDirectory() as tmp:
             with zipfile.ZipFile(build_into(tmp)) as archive:
-                self.assertEqual(archive.namelist()[0], "META-INF/MANIFEST.MF")
+                names = set(archive.namelist())
+        for required in REQUIRED_PATHS:
+            self.assertIn(required, names)
 
-    def test_manifest_version_tracks_the_requested_version(self):
+    def test_ics_json_is_the_first_entry(self):
         with TemporaryDirectory() as tmp:
             with zipfile.ZipFile(build_into(tmp)) as archive:
-                manifest = archive.read("META-INF/MANIFEST.MF").decode()
-        self.assertIn(f"ICS-Package-Version: {VERSION}", manifest)
-        self.assertIn(f"ICS-Package-Identifier: {build_iar.IDENTIFIER}", manifest)
-        self.assertTrue(manifest.endswith("\n"))
+                self.assertEqual(archive.namelist()[0], "ics.json")
+
+    def test_every_connection_has_an_appinstance_descriptor(self):
+        import json
+        with TemporaryDirectory() as tmp:
+            with zipfile.ZipFile(build_into(tmp)) as archive:
+                names = set(archive.namelist())
+                manifest = json.loads(archive.read("ics.json"))
+        self.assertEqual(len(manifest["connections"]), 3)
+        for conn in manifest["connections"]:
+            self.assertIn(f"icspackage/appinstances/{conn['code']}.xml", names)
+
+    def test_ics_json_identity_matches_the_project_directory(self):
+        import json
+        with TemporaryDirectory() as tmp:
+            with zipfile.ZipFile(build_into(tmp)) as archive:
+                manifest = json.loads(archive.read("ics.json"))
+        declared = manifest["integrations"][0]
+        self.assertEqual(f"{declared['code']}_{declared['version']}", PROJECT)
+
+    def test_scheduled_integration_ships_a_schedule_definition(self):
+        with TemporaryDirectory() as tmp:
+            with zipfile.ZipFile(build_into(tmp)) as archive:
+                names = archive.namelist()
+        self.assertTrue([n for n in names
+                         if n.startswith("icspackage/schedule/")])
+
+    def test_no_stale_layout_left_behind(self):
+        # The first attempt used these paths and OIC rejected it. Nothing
+        # should reintroduce them.
+        with TemporaryDirectory() as tmp:
+            with zipfile.ZipFile(build_into(tmp)) as archive:
+                names = archive.namelist()
+        self.assertFalse([n for n in names if n.startswith("META-INF/")])
+        self.assertFalse([n for n in names if n.endswith("/icspackage.xml")])
+        self.assertFalse([n for n in names if "/connections/" in n])
 
     def test_build_is_byte_identical_across_runs(self):
         with TemporaryDirectory() as one, TemporaryDirectory() as two:
@@ -68,7 +111,7 @@ class TestBuild(unittest.TestCase):
     def test_entries_are_sorted(self):
         with TemporaryDirectory() as tmp:
             with zipfile.ZipFile(build_into(tmp)) as archive:
-                body = archive.namelist()[1:]  # manifest is pinned first
+                body = archive.namelist()[1:]  # ics.json is pinned first
         self.assertEqual(body, sorted(body))
 
     def test_all_timestamps_are_fixed(self):
@@ -93,8 +136,7 @@ class TestBuild(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             staged = os.path.join(tmp, "src")
             shutil.copytree(SRC, staged)
-            key = os.path.join(staged, "icspackage", "project", PROJECT,
-                               "connections", "sftp.pem")
+            key = os.path.join(staged, "icspackage", "appinstances", "sftp.pem")
             with open(key, "w") as handle:
                 handle.write("placeholder")
             with self.assertRaises(SystemExit) as ctx:
@@ -127,8 +169,8 @@ class TestValidateAcceptsAGoodArchive(unittest.TestCase):
             with zipfile.ZipFile(build_into(tmp)) as archive:
                 names = set(archive.namelist())
                 import xml.etree.ElementTree as ET
-                root = ET.fromstring(
-                    archive.read(f"icspackage/project/{PROJECT}/icspackage.xml"))
+                root = ET.fromstring(archive.read(
+                    f"icspackage/project/{PROJECT}/PROJECT-INF/project.xml"))
         declared = [el.get("path") for el in root.iter()
                     if el.tag.endswith("resource") and el.get("path")]
         self.assertGreaterEqual(len(declared), 10)
@@ -153,20 +195,42 @@ class TestValidateRejectsBadArchives(unittest.TestCase):
                 handle.write("not a zip")
             self.assertRejected(path, "not a ZIP")
 
-    def test_missing_manifest(self):
+    def test_missing_ics_json(self):
         with TemporaryDirectory() as tmp:
-            path = rewrite(build_into(tmp), tmp, drop=("META-INF/MANIFEST.MF",))
-            self.assertRejected(path, "META-INF/MANIFEST.MF")
+            path = rewrite(build_into(tmp), tmp, drop=("ics.json",))
+            self.assertRejected(path, "ics.json")
 
-    def test_manifest_version_disagreeing_with_the_project_directory(self):
+    def test_missing_project_xml(self):
         with TemporaryDirectory() as tmp:
-            path = rewrite(build_into(tmp), tmp,
-                           drop=("META-INF/MANIFEST.MF",),
-                           add={"META-INF/MANIFEST.MF":
-                                "Manifest-Version: 1.0\n"
-                                "ICS-Package-Identifier: NEW_HIRE_LOAD\n"
-                                "ICS-Package-Version: 02.00.0000\n"})
+            target = f"icspackage/project/{PROJECT}/PROJECT-INF/project.xml"
+            path = rewrite(build_into(tmp), tmp, drop=(target,))
+            self.assertRejected(path, "PROJECT-INF/project.xml")
+
+    def test_missing_project_attributes(self):
+        with TemporaryDirectory() as tmp:
+            target = (f"icspackage/project/{PROJECT}/"
+                      "ics_project_attributes.properties")
+            path = rewrite(build_into(tmp), tmp, drop=(target,))
+            self.assertRejected(path, "ics_project_attributes.properties")
+
+    def test_ics_json_version_disagreeing_with_the_project_directory(self):
+        with TemporaryDirectory() as tmp:
+            path = rewrite(build_into(tmp), tmp, drop=("ics.json",),
+                           add={"ics.json": '{"integrations": [{"code": '
+                                '"NEW_HIRE_LOAD", "version": "02.00.0000"}]}'})
             self.assertRejected(path, "project directory")
+
+    def test_connection_without_a_descriptor_is_caught(self):
+        with TemporaryDirectory() as tmp:
+            target = "icspackage/appinstances/HCM_CORE_HR.xml"
+            path = rewrite(build_into(tmp), tmp, drop=(target,))
+            self.assertRejected(path, "HCM_CORE_HR")
+
+    def test_malformed_ics_json_is_caught(self):
+        with TemporaryDirectory() as tmp:
+            path = rewrite(build_into(tmp), tmp, drop=("ics.json",),
+                           add={"ics.json": "{not json"})
+            self.assertRejected(path, "not valid JSON")
 
     def test_declared_resource_missing_from_the_archive(self):
         with TemporaryDirectory() as tmp:
@@ -177,9 +241,9 @@ class TestValidateRejectsBadArchives(unittest.TestCase):
 
     def test_malformed_xml_is_caught(self):
         with TemporaryDirectory() as tmp:
-            target = f"icspackage/project/{PROJECT}/icspackage.xml"
+            target = f"icspackage/project/{PROJECT}/PROJECT-INF/project.xml"
             path = rewrite(build_into(tmp), tmp, drop=(target,),
-                           add={target: "<icspackage><unclosed></icspackage>"})
+                           add={target: "<project><unclosed></project>"})
             self.assertRejected(path, "malformed XML")
 
     def test_path_traversal_entry_is_caught(self):
@@ -192,7 +256,7 @@ class TestValidateRejectsBadArchives(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             path = rewrite(
                 build_into(tmp), tmp,
-                add={f"icspackage/project/{PROJECT}/connections/leaked":
+                add={f"icspackage/appinstances/leaked":
                      "-----BEGIN RSA PRIVATE KEY-----\nabc\n"})
             self.assertRejected(path, "private key")
 
@@ -200,7 +264,7 @@ class TestValidateRejectsBadArchives(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             path = rewrite(
                 build_into(tmp), tmp,
-                add={f"icspackage/project/{PROJECT}/connections/oops.json":
+                add={f"icspackage/appinstances/oops.json":
                      '{"password": "hunter2secret"}'})
             self.assertRejected(path, "hard-coded password")
 

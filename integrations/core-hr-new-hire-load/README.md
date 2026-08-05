@@ -6,7 +6,7 @@ loads them into Fusion Core HR, polls the import to completion, and reports the
 outcome.
 
 ```bash
-make test       # 73 tests
+make test       # 81 tests
 make build      # -> dist/NEW_HIRE_LOAD_01.00.0000.iar
 make validate   # structural checks before it touches an instance
 ```
@@ -15,18 +15,23 @@ make validate   # structural checks before it touches an instance
 
 ```
 src/                          exploded .iar — everything below is packaged
-  icspackage/project/NEW_HIRE_LOAD_01.00.0000/
-    icspackage.xml            project descriptor: identity, connections, resources
-    connections/              three connection descriptors (placeholders, no secrets)
-    resources/processor_10/resourcegroup_10/
-      flow/                   the orchestration, action by action
-      maps/                   four XSLT maps
-      schemas/                nXSD for the CSV and .dat files, XSD for canonical + summary
-      wsdls/                  schedule trigger contract
+  ics.json                    archive table of contents
+  icspackage/
+    appinstances/             one descriptor per connection (placeholders, no secrets)
+    schedule/                 schedule definition
+    project/NEW_HIRE_LOAD_01.00.0000/
+      PROJECT-INF/project.xml activities and sequence
+      ics_project_attributes.properties
+      resources/processor_10/resourcegroup_10/
+        flow/                 the orchestration, action by action
+        maps/                 four XSLT maps
+        schemas/              nXSD for the CSV and .dat files, XSD for canonical + summary
+        wsdls/                schedule trigger contract
 
 tools/
   build_iar.py                packages src/ into a reproducible .iar
   validate_iar.py             checks an archive before import
+  compare_to_reference.py     diffs our layout against a real instance export
   generate_worker_dat.py      reference implementation of the HDL mapping
 
 tests/                        mapping, XSLT parity, status derivation, packaging
@@ -107,9 +112,21 @@ listed in [`docs/design.md`](docs/design.md#known-limitations).
 Everything in this repository is tested and green: the mapping, the parity
 between the two implementations, the status derivation, and the packaging.
 
-The `.iar` is assembled from source to the documented OIC archive layout and
-passes structural validation, but it has not been round-tripped through an OIC
-instance here — no instance was available. **OIC's import wizard is the
-authority on whether an archive imports.** Import it into a development
-instance first; if the wizard rejects the layout, the fix belongs in
-`tools/build_iar.py` and the artifacts under `src/` carry over unchanged.
+The `.iar` has **not** been round-tripped through an OIC instance here — none
+was available. The first build used a layout OIC rejected with "path not
+found"; it was missing `ics.json`, `icspackage/appinstances/` and
+`PROJECT-INF/project.xml`, and the current layout corrects that. Whether the
+correction is sufficient is not something this repository can prove.
+
+**If it still does not import**, do not guess at the layout — get the real one:
+
+```bash
+# Export any integration from the target instance, then:
+python3 tools/compare_to_reference.py exported_from_instance.iar
+```
+
+That prints exactly which paths the instance's own export has that ours does
+not. The mapping artifacts under `src/.../maps/` and `src/.../schemas/` are
+independent of the packaging and carry over unchanged either way — they also
+import directly into the OIC designer if you build the flow there and export
+the `.iar` from OIC, which is the route that always works.

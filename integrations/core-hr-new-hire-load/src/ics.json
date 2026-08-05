@@ -1,0 +1,19 @@
+{
+  "archiveType": "INTEGRATION",
+  "exportedBy": "build_iar.py",
+  "schemaVersion": "1.0",
+  "integrations": [
+    {
+      "code": "NEW_HIRE_LOAD",
+      "version": "01.00.0000",
+      "name": "Core HR - New Hire Load (HDL)",
+      "pattern": "SCHEDULED_ORCHESTRATION",
+      "status": "CONFIGURED"
+    }
+  ],
+  "connections": [
+    { "code": "FTP_NEWHIRE_INBOUND", "adapterType": "ftp" },
+    { "code": "HCM_CORE_HR", "adapterType": "oraclehcmcloud" },
+    { "code": "SMTP_NOTIFY", "adapterType": "oraclecloudnotification" }
+  ]
+}

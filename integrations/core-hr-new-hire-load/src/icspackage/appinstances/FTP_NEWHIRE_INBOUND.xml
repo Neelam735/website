@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Connection (app instance) descriptor.
+
+  Credentials are deliberately absent: OIC does not export secrets, and the
+  import wizard prompts for them. Every ${...} below is a placeholder to be
+  replaced per environment.
+-->
+<appinstance xmlns="http://xmlns.oracle.com/ics/appinstance">
+  <code>FTP_NEWHIRE_INBOUND</code>
+  <name>New Hire SFTP</name>
+  <description>SFTP landing zone for ATS new-hire extracts, run summaries and rejects.</description>
+  <adapterType>ftp</adapterType>
+  <role>INVOKE</role>
+  <properties>
+    <property name="hostAddress" value="${FTP_HOST}"/>
+    <property name="port" value="22"/>
+    <property name="sftp" value="yes"/>
+    <!-- Pin the fingerprint. Without it, the first connection to an impostor
+         host succeeds silently. -->
+    <property name="hostKeyFingerprint" value="${FTP_HOST_KEY_FINGERPRINT}"/>
+    <!-- Set pgpEncryption to yes and register the key when the extract
+         carries national identifiers; see docs/runbook.md. -->
+    <property name="pgpEncryption" value="no"/>
+  </properties>
+  <securityPolicy>
+    <policy>FTP Server Access Policy</policy>
+    <authenticationType>PUBLIC_KEY</authenticationType>
+    <property name="username" value="${FTP_USER}"/>
+    <property name="privateKeyAlias" value="${FTP_KEY_ALIAS}"/>
+  </securityPolicy>
+</appinstance>

@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """Package the integration source tree into an OIC integration archive (.iar).
 
-An .iar is a ZIP with a manifest and a project directory. This script builds
-one from src/ so the archive is reproducible from version control rather than
-being a binary someone once exported and dropped in a shared drive.
+An .iar is a ZIP laid out as:
+
+    ics.json                                  archive table of contents
+    icspackage/appinstances/<CODE>.xml        one per connection
+    icspackage/schedule/<PROJECT>.xml         scheduled integrations only
+    icspackage/project/<PROJECT>/
+        PROJECT-INF/project.xml               activities and sequence
+        ics_project_attributes.properties
+        resources/processor_*/resourcegroup_*/    wsdl, xsd, nxsd, xsl
+
+This script builds one from src/ so the archive is reproducible from version
+control rather than being a binary someone once exported and dropped in a
+shared drive.
 
 Reproducible means byte-identical across machines and runs: entries are sorted,
 timestamps are fixed, and permissions are normalised. Two builds of the same
@@ -69,23 +79,13 @@ def check_no_secrets(entries: list[tuple[str, str]]) -> list[str]:
     return [name for name, _ in entries if name.endswith(SECRET_SUFFIXES)]
 
 
-def render_manifest(version: str) -> str:
-    """MANIFEST.MF, written by us rather than copied.
-
-    Keeping it generated means the version in the manifest can never drift
-    from the version in the file name.
-    """
-    lines = [
-        "Manifest-Version: 1.0",
-        "Created-By: build_iar.py",
-        f"ICS-Package-Identifier: {IDENTIFIER}",
-        f"ICS-Package-Version: {version}",
-        "ICS-Package-Type: INTEGRATION",
-        "ICS-Package-Style: SCHEDULED_ORCHESTRATION",
-    ]
-    # A JAR manifest must end with a newline; some readers drop the last
-    # header without it.
-    return "\n".join(lines) + "\n"
+# Entries OIC's importer looks for. A missing one is what produces the
+# unhelpful "path not found" on import.
+REQUIRED_LAYOUT = [
+    "ics.json",
+    "icspackage/project/{project}/PROJECT-INF/project.xml",
+    "icspackage/project/{project}/ics_project_attributes.properties",
+]
 
 
 def build(out_dir: str, version: str, src_dir: str = SRC) -> str:
@@ -103,7 +103,8 @@ def build(out_dir: str, version: str, src_dir: str = SRC) -> str:
             + "\n  ".join(leaked)
         )
 
-    project_dir = f"icspackage/project/{IDENTIFIER}_{version}"
+    project = f"{IDENTIFIER}_{version}"
+    project_dir = f"icspackage/project/{project}"
     if not any(name.startswith(project_dir + "/") for name, _ in entries):
         raise SystemExit(
             f"no project directory '{project_dir}' in {src_dir}.\n"
@@ -111,19 +112,23 @@ def build(out_dir: str, version: str, src_dir: str = SRC) -> str:
             f"--version, or pass the version it already has."
         )
 
+    packaged = {name for name, _ in entries}
+    absent = [r.format(project=project) for r in REQUIRED_LAYOUT
+              if r.format(project=project) not in packaged]
+    if absent:
+        raise SystemExit(
+            "refusing to build: the archive would be missing entries OIC's\n"
+            "importer requires:\n  " + "\n  ".join(absent)
+        )
+
     os.makedirs(out_dir, exist_ok=True)
     iar_path = os.path.join(out_dir, f"{IDENTIFIER}_{version}.iar")
 
     with zipfile.ZipFile(iar_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        # The manifest goes in first, as JAR readers expect.
-        info = zipfile.ZipInfo("META-INF/MANIFEST.MF", date_time=FIXED_TIMESTAMP)
-        info.external_attr = 0o644 << 16
-        info.compress_type = zipfile.ZIP_DEFLATED
-        archive.writestr(info, render_manifest(version))
-
-        for arcname, full in entries:
-            if arcname == "META-INF/MANIFEST.MF":
-                continue  # generated above; never copy a stale one
+        # ics.json goes in first: it is the archive's table of contents, and
+        # OIC reads it before anything else.
+        ordered = sorted(entries, key=lambda e: (e[0] != "ics.json", e[0]))
+        for arcname, full in ordered:
             info = zipfile.ZipInfo(arcname, date_time=FIXED_TIMESTAMP)
             info.external_attr = 0o644 << 16
             info.compress_type = zipfile.ZIP_DEFLATED

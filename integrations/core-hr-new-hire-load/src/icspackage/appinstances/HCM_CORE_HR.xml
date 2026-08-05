@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Oracle HCM Cloud adapter. Used for three things: uploading the archive to
+  UCM, submitting the HDL import, and reading back the data set status.
+
+  The integration user needs, at minimum:
+    Human Capital Management Integration Specialist
+    HCM Data Loader (Load Data, Import Data, Review Data Set)
+    Attachments User (for the UCM upload)
+  Grant a dedicated account, not a named person's: a leaver disabling the
+  account takes the nightly load down with them.
+-->
+<appinstance xmlns="http://xmlns.oracle.com/ics/appinstance">
+  <code>HCM_CORE_HR</code>
+  <name>Oracle HCM Cloud - Core HR</name>
+  <description>Target Fusion HCM pod for the HDL new-hire load.</description>
+  <adapterType>oraclehcmcloud</adapterType>
+  <role>INVOKE</role>
+  <properties>
+    <!-- e.g. https://your-pod.fa.us2.oraclecloud.com - no trailing slash. -->
+    <property name="hcmServiceHost" value="${HCM_HOST}"/>
+    <property name="ucmServiceHost" value="${HCM_HOST}"/>
+    <property name="interfaceCatalog" value="HCM_DATA_LOADER"/>
+  </properties>
+  <securityPolicy>
+    <policy>Username Password Token</policy>
+    <property name="username" value="${HCM_INTEGRATION_USER}"/>
+    <property name="password" value="${HCM_INTEGRATION_PASSWORD}"/>
+  </securityPolicy>
+</appinstance>

@@ -14,13 +14,19 @@ from __future__ import annotations
 
 import argparse
 import posixpath
+import json
 import re
 import sys
 import zipfile
 import xml.etree.ElementTree as ET
 
-REQUIRED_ENTRIES = [
-    "META-INF/MANIFEST.MF",
+# The entries OIC's importer resolves by path. A missing one is what surfaces
+# as an unhelpful "path not found" during import, which is why they are
+# checked by exact path here rather than inferred.
+REQUIRED_ROOT_ENTRIES = ["ics.json"]
+REQUIRED_PROJECT_ENTRIES = [
+    "PROJECT-INF/project.xml",
+    "ics_project_attributes.properties",
 ]
 
 # Anything matching these in a packaged file means a secret was committed.
@@ -60,13 +66,8 @@ def validate(path: str) -> Report:
 
         names = archive.namelist()
 
-        missing = [r for r in REQUIRED_ENTRIES if r not in names]
-        for required in missing:
-            report.check(False, f"missing required entry: {required}")
-        if missing:
-            # Everything below reads the manifest; without it there is nothing
-            # further worth reporting.
-            return report
+        for required in REQUIRED_ROOT_ENTRIES:
+            report.check(required in names, f"missing required entry: {required}")
 
         # A path escaping the archive root is how a malicious .iar writes
         # outside the import directory.
@@ -88,32 +89,68 @@ def validate(path: str) -> Report:
         project = project_dirs.pop()
         project_root = f"icspackage/project/{project}"
 
-        # Manifest version must agree with the directory name and file name.
-        manifest = archive.read("META-INF/MANIFEST.MF").decode("utf-8")
-        headers = dict(
-            line.split(":", 1) for line in manifest.splitlines() if ":" in line
-        )
-        headers = {k.strip(): v.strip() for k, v in headers.items()}
+        for rel in REQUIRED_PROJECT_ENTRIES:
+            report.check(f"{project_root}/{rel}" in names,
+                         f"missing required entry: {project_root}/{rel}")
 
-        identifier = headers.get("ICS-Package-Identifier", "")
-        version = headers.get("ICS-Package-Version", "")
-        report.check(bool(identifier), "manifest has no ICS-Package-Identifier")
-        report.check(bool(version), "manifest has no ICS-Package-Version")
-        report.check(
-            project == f"{identifier}_{version}",
-            f"manifest says {identifier}_{version} but the project directory "
-            f"is {project}",
-        )
-        report.check(
-            posixpath.basename(path) == f"{identifier}_{version}.iar",
-            f"file name {posixpath.basename(path)} does not match "
-            f"{identifier}_{version}.iar",
-            fatal=False,
-        )
-
-        descriptor = f"{project_root}/icspackage.xml"
-        if not report.check(descriptor in names, f"missing {descriptor}"):
+        descriptor = f"{project_root}/PROJECT-INF/project.xml"
+        if descriptor not in names:
+            # Nothing below can be cross-checked without it.
             return report
+
+        # Identity must agree across the file name, the project directory,
+        # ics.json and project.xml. Drift here is what makes an archive import
+        # as an integration nobody recognises.
+        if "ics.json" in names:
+            try:
+                manifest = json.loads(archive.read("ics.json"))
+            except json.JSONDecodeError as exc:
+                manifest = None
+                report.check(False, f"ics.json is not valid JSON ({exc})")
+            if manifest is not None:
+                declared = manifest.get("integrations") or []
+                report.check(len(declared) == 1,
+                             f"ics.json declares {len(declared)} integrations, "
+                             f"expected 1")
+                if declared:
+                    code = declared[0].get("code", "")
+                    version = declared[0].get("version", "")
+                    report.check(
+                        project == f"{code}_{version}",
+                        f"ics.json says {code}_{version} but the project "
+                        f"directory is {project}",
+                    )
+                    report.check(
+                        posixpath.basename(path) == f"{code}_{version}.iar",
+                        f"file name {posixpath.basename(path)} does not match "
+                        f"{code}_{version}.iar",
+                        fatal=False,
+                    )
+                # Every connection ics.json names must have a descriptor.
+                for conn in manifest.get("connections") or []:
+                    conn_code = conn.get("code", "")
+                    report.check(
+                        f"icspackage/appinstances/{conn_code}.xml" in names,
+                        f"ics.json declares connection {conn_code}, which has "
+                        f"no descriptor under icspackage/appinstances/",
+                    )
+
+        # A scheduled integration with no schedule definition imports, then
+        # silently never runs.
+        try:
+            pattern = ET.fromstring(archive.read(descriptor)).find(
+                "{*}pattern")
+            is_scheduled = pattern is not None and "SCHEDULED" in (
+                pattern.text or "")
+        except ET.ParseError:
+            is_scheduled = False
+        if is_scheduled:
+            report.check(
+                any(n.startswith("icspackage/schedule/") for n in names),
+                "project.xml declares a scheduled pattern but the archive has "
+                "no icspackage/schedule/ definition",
+                fatal=False,
+            )
 
         # Every XML artifact must parse. A map that fails to parse fails the
         # import with a far less helpful message than this one.
@@ -138,20 +175,21 @@ def validate(path: str) -> Report:
             el.get("path") for el in root.iter()
             if el.tag.endswith("resource") and el.get("path")
         ]
-        report.check(bool(declared), "icspackage.xml declares no resources")
+        report.check(bool(declared), "project.xml declares no resources")
         for rel in declared:
             report.check(
                 f"{project_root}/{rel}" in names,
-                f"icspackage.xml declares {rel}, which is not in the archive",
+                f"project.xml declares {rel}, which is not in the archive",
             )
 
-        # And every connection descriptor it points at.
+        # And every connection the project binds to.
         for el in root.iter():
-            if el.tag.endswith("descriptor") and (el.text or "").strip():
-                rel = el.text.strip()
+            if el.tag.endswith("appinstanceReference"):
+                code = el.get("code", "")
                 report.check(
-                    f"{project_root}/{rel}" in names,
-                    f"connection descriptor {rel} is not in the archive",
+                    f"icspackage/appinstances/{code}.xml" in names,
+                    f"project.xml binds connection {code}, which has no "
+                    f"descriptor under icspackage/appinstances/",
                 )
 
         # Maps and the flow must not reference resources that were left out.

@@ -138,6 +138,27 @@ Two implementations only stay honest if something checks them, so
 output matches byte for byte — including the sparse rows, the alternative date
 formats, and the rows that should be rejected.
 
+## Archive layout
+
+```
+ics.json                                     archive table of contents
+icspackage/appinstances/<CODE>.xml           one per connection
+icspackage/schedule/<PROJECT>.xml            scheduled integrations only
+icspackage/project/<PROJECT>/
+    PROJECT-INF/project.xml                  activities and sequence
+    ics_project_attributes.properties
+    resources/processor_*/resourcegroup_*/   wsdl, xsd, nxsd, xsl
+```
+
+OIC's importer resolves several of these by exact path, and a missing one
+surfaces as an unhelpful "path not found". `build_iar.py` refuses to build
+without them and `validate_iar.py` checks them by name, so the failure is
+caught at build time rather than at import time.
+
+The layout is version-specific and not fully published.
+`tools/compare_to_reference.py` diffs ours against a real export from the
+target instance, which is the reliable way to settle it.
+
 ## Security
 
 - **No credentials in the archive.** OIC does not export secrets; the import

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The built-in OIC notification service. Recipients are set through the
+  notifyTo integration property rather than pinned here, so a rota change does
+  not need a redeploy.
+-->
+<appinstance xmlns="http://xmlns.oracle.com/ics/appinstance">
+  <code>SMTP_NOTIFY</code>
+  <name>New Hire Load Notifications</name>
+  <description>Completion and failure notifications for the new-hire load.</description>
+  <adapterType>oraclecloudnotification</adapterType>
+  <role>INVOKE</role>
+  <properties/>
+</appinstance>
