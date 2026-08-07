@@ -1,5 +1,6 @@
 INTEGRATION := integrations/core-hr-new-hire-load
 TOOLS       := $(INTEGRATION)/tools
+APEX        := apex/approval-engine
 DIST        := dist
 VERSION     := 01.00.0000
 IAR         := $(DIST)/NEW_HIRE_LOAD_$(VERSION).iar
@@ -16,9 +17,10 @@ build:
 validate: $(IAR)
 	@python3 $(TOOLS)/validate_iar.py $(IAR)
 
-## Mapping, XSLT parity, status derivation and packaging tests
+## Mapping, XSLT parity, status derivation, packaging and SQL structure tests
 test:
 	@python3 -m unittest discover -s $(INTEGRATION)/tests
+	@python3 -m unittest discover -s $(APEX)/tests
 
 ## Regenerate the sample HDL output from the sample extract
 sample:
