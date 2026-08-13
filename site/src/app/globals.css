@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens.
+ *
+ * The palette is deliberately warm — clay and honey over a paper-cream canvas —
+ * so the site reads as hospitality-adjacent rather than as another blue/purple
+ * SaaS template. Change the brand here and the whole site follows.
+ */
+@theme {
+  /* Primary: clay. Used for CTAs, links and emphasis. */
+  --color-clay-50: #fdf5f1;
+  --color-clay-100: #fbe8de;
+  --color-clay-200: #f6cdb8;
+  --color-clay-300: #eeaa88;
+  --color-clay-400: #e37f55;
+  --color-clay-500: #d55f30;
+  --color-clay-600: #b9481d; /* AA on white for text and small type */
+  --color-clay-700: #97381a;
+  --color-clay-800: #7a2f1a;
+  --color-clay-900: #642918;
+  --color-clay-950: #361208;
+
+  /* Accent: honey. Highlights, badges, chart-ish flourishes. */
+  --color-honey-50: #fdf8ed;
+  --color-honey-100: #f9edcd;
+  --color-honey-200: #f3d998;
+  --color-honey-300: #ecc063;
+  --color-honey-400: #e6a73c;
+  --color-honey-500: #d98a1f;
+  --color-honey-600: #bf6a17;
+  --color-honey-700: #9e4d16;
+  --color-honey-800: #813e18;
+  --color-honey-900: #6b3417;
+
+  /* Warm neutrals. */
+  --color-ink-50: #faf7f4;
+  --color-ink-100: #f3ede6;
+  --color-ink-200: #e7dcd0;
+  --color-ink-300: #d5c4b2;
+  --color-ink-400: #b09b86;
+  --color-ink-500: #8a7666;
+  --color-ink-600: #6b5a4d; /* AA body text on canvas */
+  --color-ink-700: #55473d;
+  --color-ink-800: #3a3029;
+  --color-ink-900: #241d18;
+  --color-ink-950: #14100d;
+
+  --color-canvas: #fffbf6;
+  --color-surface: #ffffff;
+  --color-line: #ece2d6;
+
+  /* Supporting greens for "result" / success metrics. */
+  --color-sage-100: #e3efe4;
+  --color-sage-500: #4f8a5b;
+  --color-sage-700: #2f6540;
+
+  --radius-card: 1rem;
+
+  --shadow-soft: 0 1px 2px rgb(36 29 24 / 0.04), 0 8px 24px -12px rgb(36 29 24 / 0.12);
+  --shadow-lift: 0 2px 4px rgb(36 29 24 / 0.05), 0 20px 40px -20px rgb(36 29 24 / 0.22);
+}
+
+/* next/font injects these on <html>; `inline` keeps the var reference intact. */
+@theme inline {
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-display), var(--font-body), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink-900);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    color: var(--color-ink-950);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Visible, high-contrast focus ring for keyboard users everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--color-clay-600);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Anchor targets clear the sticky header. */
+  :target {
+    scroll-margin-top: 6rem;
+  }
+}
+
+@layer components {
+  /* Reveal-on-scroll. Elements start hidden only when JS can un-hide them,
+     so no-JS and reduced-motion visitors always see the content. */
+  .js .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity 0.5s ease-out,
+      transform 0.5s ease-out;
+  }
+
+  .js .reveal[data-visible="true"] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .js .reveal,
+  .js .reveal[data-visible="true"] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
